@@ -176,3 +176,67 @@ export function memberById(persona: Persona, id: string): Member | undefined {
 export function projectById(persona: Persona, id: string): Project | undefined {
   return persona.projects.find((p) => p.id === id);
 }
+
+// ──────────────────── Activity series ────────────────────
+// Deterministic per-id daily session counts, suitable for the 90-day heatmap.
+// Generated client-side from the seed so SSR + hydration agree.
+
+function hashSeed(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export type ActivityDay = { date: string; count: number };
+
+export function lastNDaysActivity(
+  scope: "project" | "member",
+  id: string,
+  days = 91,
+  endDate: Date = new Date(),
+): ActivityDay[] {
+  const rand = mulberry32(hashSeed(`${scope}:${id}`));
+  // Per-id baseline so different projects/members feel distinct.
+  const baseline = 1 + Math.floor(rand() * 4); // 1..4
+  const peak = baseline + 4 + Math.floor(rand() * 6); // baseline+4..baseline+9
+  // ~6 random "surge" days in the window.
+  const surgeDays = new Set<number>();
+  while (surgeDays.size < 6) surgeDays.add(Math.floor(rand() * days));
+
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  const out: ActivityDay[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(end);
+    d.setDate(end.getDate() - i);
+    const dow = d.getDay();
+    const isWeekend = dow === 0 || dow === 6;
+
+    let count = 0;
+    if (rand() < (isWeekend ? 0.35 : 0.92)) {
+      const noise = rand();
+      const base = isWeekend ? Math.floor(baseline * 0.3) : baseline;
+      count = base + Math.floor(noise * (peak - baseline));
+    }
+    if (surgeDays.has(days - 1 - i)) count = peak + Math.floor(rand() * 4);
+
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    out.push({ date: `${y}-${m}-${dd}`, count });
+  }
+  return out;
+}

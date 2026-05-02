@@ -4,9 +4,10 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { I } from "../../_components/icons";
 import { Avatar, Badge, Sparkline } from "../../_components/primitives";
+import { Heatmap } from "../../_components/heatmap";
 import { useShell } from "../../_components/shell";
 import { api } from "../../_data/api";
-import { memberById, projectById, type InsightTag } from "../../_data/sample";
+import { lastNDaysActivity, memberById, projectById, type InsightTag } from "../../_data/sample";
 
 const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactElement, string]> = {
   decision: ["accent", () => <I.decision />, "Decision"],
@@ -128,6 +129,9 @@ export default function ProjectOverviewPage({ params }: { params: Promise<{ id: 
           <div style={{ fontSize: 11.5, color: "var(--fg-muted)", marginTop: 4 }}>{c.sub}</div>
         </div>
       ))}
+
+      <ActivitySection projectId={id} hue={p.hue} />
+
 
       <section
         style={{
@@ -272,6 +276,130 @@ export default function ProjectOverviewPage({ params }: { params: Promise<{ id: 
         </div>
       </section>
     </div>
+  );
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function ActivitySection({ projectId, hue }: { projectId: string; hue: number }) {
+  const days = lastNDaysActivity("project", projectId);
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const past = days.filter((d) => d.date <= todayIso);
+
+  const total = past.reduce((acc, d) => acc + d.count, 0);
+  const activeDays = past.filter((d) => d.count > 0).length;
+
+  const dowTotals = [0, 0, 0, 0, 0, 0, 0];
+  const dowDays = [0, 0, 0, 0, 0, 0, 0];
+  for (const d of past) {
+    const [y, m, dd] = d.date.split("-").map(Number);
+    const dow = new Date(y, m - 1, dd).getDay();
+    dowTotals[dow] += d.count;
+    dowDays[dow] += 1;
+  }
+  let busiestDow = 0;
+  let busiestAvg = 0;
+  for (let i = 0; i < 7; i++) {
+    const avg = dowDays[i] > 0 ? dowTotals[i] / dowDays[i] : 0;
+    if (avg > busiestAvg) {
+      busiestAvg = avg;
+      busiestDow = i;
+    }
+  }
+
+  let streak = 0;
+  for (let i = past.length - 1; i >= 0; i--) {
+    if (past[i].count > 0) streak += 1;
+    else break;
+  }
+
+  const stats: Array<{ label: string; v: string | number; sub?: string }> = [
+    { label: "Sessions", v: total.toLocaleString(), sub: "last 90d" },
+    { label: "Active days", v: activeDays, sub: `of ${past.length}` },
+    { label: "Busiest day", v: WEEKDAYS[busiestDow], sub: `${busiestAvg.toFixed(1)} avg` },
+    { label: "Current streak", v: streak, sub: streak === 1 ? "day" : "days" },
+  ];
+
+  return (
+    <section
+      style={{
+        gridColumn: "1 / span 4",
+        background: "var(--bg)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 14px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Activity</h3>
+        <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>last 90 days</span>
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, auto) 1fr",
+          gap: 24,
+          padding: "16px 16px 18px",
+          alignItems: "start",
+        }}
+      >
+        <Heatmap days={days} hue={hue} />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+            alignSelf: "stretch",
+          }}
+        >
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "10px 12px",
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: "var(--fg-faint)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {s.label}
+              </div>
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 600,
+                  color: "var(--fg-strong)",
+                  letterSpacing: "-0.02em",
+                  marginTop: 4,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {s.v}
+              </div>
+              {s.sub && (
+                <div style={{ fontSize: 11, color: "var(--fg-muted)", marginTop: 2 }}>{s.sub}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
