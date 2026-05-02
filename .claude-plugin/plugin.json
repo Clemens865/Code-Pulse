@@ -1,0 +1,8 @@
+{
+  "name": "claude-pulse-commercial",
+  "description": "Commercial fork of Claude Pulse — isolated DB at ~/.claude-pulse-commercial; do not enable alongside the original",
+  "version": "0.1.0",
+  "author": {
+    "name": "Clemens Hoenig"
+  }
+}

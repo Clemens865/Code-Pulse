@@ -1,0 +1,35 @@
+# fly.toml — Claude Pulse Team API
+# Run `fly launch --no-deploy` once to create the app, then `fly deploy`.
+# Set secrets:
+#   fly secrets set DATABASE_URL=... API_KEY_PEPPER=... HEALTH_DEEP_TOKEN=...
+
+app = "claude-pulse-team-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "node dist/db/migrate.js"
+
+[env]
+  PORT = "8787"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/v1/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

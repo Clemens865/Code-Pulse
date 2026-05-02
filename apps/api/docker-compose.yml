@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cpt-api-pg
+    environment:
+      POSTGRES_USER: cpt
+      POSTGRES_PASSWORD: cpt
+      POSTGRES_DB: cpt_dev
+    ports:
+      - "56432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cpt -d cpt_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - cpt-api-pgdata:/var/lib/postgresql/data
+
+volumes:
+  cpt-api-pgdata:

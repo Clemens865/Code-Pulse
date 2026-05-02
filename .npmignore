@@ -1,0 +1,32 @@
+# Build artifacts
+.next/
+node_modules/
+*.tsbuildinfo
+
+# Dev/tooling
+.claude/
+.lazy/
+.playwright-mcp/
+.mcp.json
+blueprints/
+hooks/session-start.sh
+hooks/session-stop.sh
+hooks/pre-compact.sh
+hooks/post-edit-check.sh
+hooks/detect-check.sh
+hooks/detect-test.sh
+hooks/check-research-template.sh
+hooks/tag-insights.sh
+
+# Screenshots and docs images
+*.png
+dashboard-*.png
+fixed-*.png
+
+# Environment
+.env
+.env.local
+.DS_Store
+
+# Lock files (users install their own)
+package-lock.json
