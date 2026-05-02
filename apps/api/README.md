@@ -1,107 +1,181 @@
 # Claude Pulse Team — API
 
-Node 22 + Hono + Drizzle. See `docs/team-saas/API.md` for the contract and `docs/team-saas/SCHEMA.sql` for the canonical DDL (mirrored at `drizzle/migrations/0000_init.sql`).
+Node 22 + Hono + Drizzle + Postgres. See `docs/team-saas/API.md` for the
+contract and `docs/team-saas/SCHEMA.sql` for the canonical DDL (mirrored
+at `drizzle/migrations/0000_init.sql`).
 
-## Local development
+## Quickstart (5 minutes, end-to-end)
 
-Prerequisites: Node 22+, Docker.
+Prereqs: Node 22+, Docker.
 
 ```bash
-# Postgres
+cd apps/api
+
+# 1. Postgres
 docker compose up -d
 
-# Env
-cp .env.example .env
-# Generate the two required secrets:
-node -e "console.log('API_KEY_PEPPER=' + require('crypto').randomBytes(32).toString('hex'))"
-node -e "console.log('HEALTH_DEEP_TOKEN=' + require('crypto').randomBytes(16).toString('hex'))"
+# 2. Env — generate secrets and write .env
+PEPPER=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+SESSION=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+CANARY=$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")
+cat > .env <<EOF
+NODE_ENV=development
+PORT=8787
+LOG_LEVEL=info
+DATABASE_URL=postgres://cpt:cpt@localhost:56432/cpt_dev
+API_KEY_PEPPER=$PEPPER
+HEALTH_DEEP_TOKEN=$CANARY
+DASHBOARD_ORIGINS=http://localhost:3142,http://localhost:3000
+SESSION_SECRET=$SESSION
+EOF
 
-# Schema
+# 3. Schema
 npm install
+set -a && source .env && set +a
 npm run db:migrate
 
-# Run
+# 4. Run the API
 npm run dev
-# → http://localhost:8787/v1/health
+# → http://localhost:8787/v1/health  (returns ok)
 ```
+
+## Smoke test the data path
+
+```bash
+# 5. Seed an org + admin member + workstation API key (one shot)
+set -a && source .env && set +a
+npx tsx scripts/seed-smoke.ts
+# → prints ORG_ID, MEMBER_ID, API_KEY=cpt_...
+
+# 6. POST a synthetic event with the API key
+KEY="cpt_<paste-from-step-5>"
+EVID=$(node -e "console.log(crypto.randomUUID())")
+SID=$(node -e "console.log(crypto.randomUUID())")
+TS=$(node -e "console.log(new Date().toISOString())")
+curl -s -X POST http://localhost:8787/v1/events \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"v\": 1,
+    \"events\": [{
+      \"id\": \"$EVID\",
+      \"kind\": \"session.start\",
+      \"session_id\": \"$SID\",
+      \"project\": { \"remote_url\": \"https://github.com/test/smoke-repo\" },
+      \"client\": { \"hook_version\": \"0.1.0-smoke\", \"os\": \"darwin\" },
+      \"hook_ts\": \"$TS\",
+      \"payload\": {}
+    }]
+  }"
+# → {"received":1,"accepted":1,"duplicates":0,"rejected":[],...}
+
+# 7. Verify the event landed
+docker exec cpt-api-pg psql -U cpt -d cpt_dev \
+  -c "SELECT id, event_kind, project_id, member_id, hook_ts FROM event_log ORDER BY hook_ts DESC LIMIT 3;"
+```
+
+## Connect the dashboard (live data)
+
+The Next dashboard (`src/app/team/`) defaults `NEXT_PUBLIC_API_URL` to
+`http://localhost:8787` and falls back to sample data when the API is
+unreachable.
+
+```bash
+# In another shell:
+cd ../..
+npm run dev      # → http://localhost:3142
+
+# In the browser, sign in via dev-login (sets the session cookie):
+fetch('http://localhost:8787/v1/auth/dev-login', {
+  method: 'POST',
+  credentials: 'include',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    org_id:    '00000000-0000-0000-0000-000000000001',
+    member_id: '00000000-0000-0000-0000-0000000000a1',
+  })
+}).then(r => r.json())
+
+# Then reload http://localhost:3142/team — Overview now shows the seeded
+# org's real data instead of sample.
+```
+
+OAuth (Google / GitHub) replaces dev-login in Phase A.4.
 
 ## Endpoints
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET  | /v1/health      | none           | liveness |
-| GET  | /v1/health/deep | canary token   | DB connectivity probe |
-| POST | /v1/events      | workstation    | idempotent batched ingest |
-
-Other endpoints (context, stream, dashboard reads, admin) land in subsequent sprints.
-
-## Smoke test
-
-```bash
-# 1. Seed an org, member, and api key (use psql until admin endpoints land):
-psql $DATABASE_URL <<SQL
-INSERT INTO orgs (id, name, slug) VALUES ('00000000-0000-0000-0000-000000000001', 'Smoke', 'smoke');
-INSERT INTO members (id, org_id, email, name, role, status)
-  VALUES ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-000000000001', 'smoke@example.com', 'Smoke', 'owner', 'active');
-SQL
-
-# 2. Issue an API key (TODO once admin endpoint exists). For now, hand-roll with the
-#    `generateApiKey()` util via a one-off script.
-
-# 3. POST a synthetic event:
-curl -s -X POST http://localhost:8787/v1/events \
-  -H "Authorization: Bearer cpt_<your-token>" \
-  -H "Content-Type: application/json" \
-  --data @- <<JSON
-{
-  "v": 1,
-  "events": [{
-    "id": "01957b4c-e2a0-7e1d-8a10-3c4f9b1e2d77",
-    "kind": "session.start",
-    "session_id": "0195789a-8000-7000-8000-000000000001",
-    "project": { "remote_url": "https://github.com/smoke/test.git" },
-    "client": { "hook_version": "1.4.0", "os": "darwin", "cloud_env": "local" },
-    "hook_ts": "2026-05-02T12:00:00Z",
-    "payload": {}
-  }]
-}
-JSON
-```
-
-## Deploy (Fly.io)
-
-```bash
-fly launch --no-deploy            # one-time, creates the app
-fly secrets set DATABASE_URL=... API_KEY_PEPPER=... HEALTH_DEEP_TOKEN=...
-fly deploy
-```
-
-Migrations run as the Fly `release_command` before each new version goes live.
+| GET  | /v1/health           | none         | liveness |
+| GET  | /v1/health/deep      | canary token | DB connectivity probe |
+| POST | /v1/auth/dev-login   | none (dev)   | dev-mode session bootstrap |
+| GET  | /v1/auth/me          | dashboard    | current member + org |
+| POST | /v1/auth/logout      | dashboard    | clear session cookie |
+| POST | /v1/events           | workstation  | idempotent batched ingest |
+| GET  | /v1/projects         | dashboard    | org's projects |
+| GET  | /v1/projects/:id     | dashboard    | project detail (insights, hot files) |
+| POST | /v1/projects/:id/confirm | dashboard | confirm needs-review project |
+| PATCH| /v1/projects/:id     | dashboard    | rename / archive / un-flag |
+| GET  | /v1/members          | dashboard    | org members + key status |
+| POST | /v1/members/invite   | dashboard    | invite by email |
+| PATCH| /v1/members/:id      | dashboard    | role / status changes |
+| POST | /v1/members/:id/keys | dashboard    | issue workstation key (plaintext shown once) |
+| GET  | /v1/admin/api-keys   | dashboard    | list keys |
+| DELETE | /v1/api-keys/:id   | dashboard    | revoke a key |
+| GET  | /v1/sessions/:id     | dashboard    | session detail (events, stats) |
+| GET  | /v1/timeline         | dashboard    | live activity feed |
+| GET  | /v1/insights         | dashboard    | typed insights search |
+| GET  | /v1/reports/weekly   | dashboard    | aggregated weekly report |
+| GET  | /v1/audit-log        | dashboard    | admin actions log |
 
 ## Layout
 
 ```
 apps/api/
 ├── src/
-│   ├── index.ts                 # Hono entrypoint
+│   ├── index.ts                 # Hono entrypoint, CORS, route mounts
 │   ├── env.ts                   # Zod-validated env
-│   ├── auth/workstation.ts      # bearer-token middleware
+│   ├── auth/
+│   │   ├── workstation.ts       # bearer-token middleware (hook → API)
+│   │   ├── session.ts           # signed-cookie session for dashboard
+│   │   └── admin.ts             # role-gated middleware
 │   ├── lib/
 │   │   ├── errors.ts            # problem+json helpers
 │   │   ├── keys.ts              # API key gen + HMAC hashing
 │   │   ├── projects.ts          # canonical-key + auto-create
-│   │   └── redaction.ts         # stub redaction pipeline
+│   │   ├── redaction.ts         # per-project redaction pipeline
+│   │   └── audit.ts             # audit_log writers
 │   ├── schemas/events.ts        # Zod request/response shapes
 │   ├── routes/
 │   │   ├── health.ts            # /v1/health, /v1/health/deep
-│   │   └── events.ts            # POST /v1/events
+│   │   ├── auth.ts              # /v1/auth/{dev-login,me,logout}
+│   │   ├── events.ts            # POST /v1/events
+│   │   ├── projects.ts          # /v1/projects/...
+│   │   ├── members.ts           # /v1/members/...
+│   │   ├── sessions.ts          # /v1/sessions/:id
+│   │   ├── timeline.ts          # /v1/timeline
+│   │   ├── insights.ts          # /v1/insights
+│   │   ├── reports.ts           # /v1/reports/weekly
+│   │   └── admin.ts             # /v1/admin/api-keys, /v1/audit-log
 │   └── db/
 │       ├── index.ts             # Drizzle client
 │       ├── schema.ts            # Drizzle table definitions
 │       └── migrate.ts           # bootstrap migration runner
+├── scripts/seed-smoke.ts        # one-shot seeder (org + member + key)
 ├── drizzle/migrations/0000_init.sql
 ├── docker-compose.yml
 ├── Dockerfile
 ├── fly.toml
 └── tsconfig.json
 ```
+
+## Deploy (Fly.io)
+
+```bash
+fly launch --no-deploy            # one-time
+fly secrets set DATABASE_URL=... API_KEY_PEPPER=... HEALTH_DEEP_TOKEN=... SESSION_SECRET=...
+fly deploy
+```
+
+Migrations run as the Fly `release_command` before each new version goes
+live.
