@@ -2,10 +2,20 @@
 
 import Link from "next/link";
 import { I } from "./_components/icons";
-import { Avatar, Badge, Btn, Chip } from "./_components/primitives";
+import { Avatar, AvatarStack, Badge, Btn, Sparkline } from "./_components/primitives";
 import { Topbar } from "./_components/topbar";
+import { Heatmap } from "./_components/heatmap";
 import { useShell } from "./_components/shell";
-import { memberById, projectById, type InsightTag } from "./_data/sample";
+import {
+  lastNDaysActivity,
+  memberById,
+  memberWeekStats,
+  orgDailyActivity,
+  orgStats7d,
+  projectById,
+  projectWeekStats,
+  type InsightTag,
+} from "./_data/sample";
 
 const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactElement, string]> = {
   decision: ["accent", () => <I.decision />, "Decision"],
@@ -13,267 +23,308 @@ const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactEle
   progress: ["ok", () => <I.progress />, "Progress"],
 };
 
-export default function TimelinePage() {
-  const { openPalette, persona, timeline: events } = useShell();
+export default function OverviewPage() {
+  const { openPalette, persona, insights } = useShell();
+  const stats = orgStats7d(persona);
+  const orgSeries = orgDailyActivity(persona);
+  const needsReview = persona.projects.filter((p) => p.needsReview);
+
+  const projectSpark = (sessions: number) =>
+    Array.from({ length: 12 }, (_, i) => Math.max(0, Math.round((sessions / 12) * (0.6 + 0.6 * Math.sin(i / 1.7) + (i / 12) * 0.4))));
+
+  const topProjects = persona.projects
+    .filter((p) => !p.needsReview)
+    .map((p) => ({ p, s: projectWeekStats(persona, p.id) }))
+    .sort((a, b) => b.s.sessions - a.s.sessions)
+    .slice(0, 5);
+
+  const topContributors = persona.members
+    .filter((m) => m.status !== "invited")
+    .map((m) => ({ m, s: memberWeekStats(persona, m.id) }))
+    .sort((a, b) => b.s.sessions - a.s.sessions)
+    .slice(0, 5);
+
+  const recentInsights = insights.slice(0, 6);
+
+  const kpis: Array<{ label: string; v: string; sub: string; spark: number[]; hue?: number }> = [
+    { label: "Sessions", v: stats.sessions.toLocaleString(), sub: "trailing 7d", spark: spark(orgSeries.slice(-12).map((d) => d.count)) },
+    { label: "Decisions", v: stats.decisions.toLocaleString(), sub: "logged", spark: [1, 2, 1, 3, 2, 3, 4, 3, 4, 3, 5, 4] },
+    { label: "Blockers", v: stats.blockers.toLocaleString(), sub: stats.blockers > 0 ? "open" : "—", spark: [1, 1, 2, 1, 2, 2, 1, 3, 2, 2, 1, 2], hue: 28 },
+    { label: "Lines net", v: signed(stats.linesNet), sub: `+${k(stats.linesAdded)} / −${k(stats.linesRemoved)}`, spark: spark(orgSeries.slice(-12).map((d) => d.count * 30)) },
+    { label: "Members", v: `${stats.activeMembers}`, sub: "active", spark: [3, 4, 3, 4, 5, 4, 5, 5, 6, 5, 6, 6] },
+  ];
 
   return (
     <>
-      <Topbar breadcrumbs={["Timeline"]} onOpenPalette={openPalette} />
+      <Topbar breadcrumbs={["Overview"]} onOpenPalette={openPalette} />
       <div style={{ padding: "18px 24px 12px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em" }}>
-            Activity
+            {persona.org.name}
           </h1>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              color: "var(--fg-muted)",
-              fontSize: 12,
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "oklch(0.7 0.15 145)",
-                boxShadow: "0 0 0 3px oklch(0.7 0.15 145 / .25)",
-              }}
-            />
-            Live
-          </span>
+          <span style={{ fontSize: 12, color: "var(--fg-faint)" }}>{persona.org.plan}</span>
           <span style={{ flex: 1 }} />
-          <Btn kind="ghost" icon={<I.download />}>
-            Export
-          </Btn>
-          <Btn kind="secondary" icon={<I.panel />}>
-            Group by project
-          </Btn>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <Chip>
-            <I.filter /> Filters
-          </Chip>
-          <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
-          <Chip hasValue>
-            Project · 3 <I.chevron />
-          </Chip>
-          <Chip>
-            Member <I.chevron />
-          </Chip>
-          <Chip>
-            Type <I.chevron />
-          </Chip>
-          <Chip hasValue>
-            Last 24h <I.chevron />
-          </Chip>
-          <span style={{ flex: 1 }} />
-          <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
-            {events.length} events · updated just now
-          </span>
+          <Btn kind="ghost" icon={<I.download />}>Export</Btn>
+          <Link href="/team/reports" style={{ textDecoration: "none" }}>
+            <Btn kind="secondary" icon={<I.reports />}>Reports</Btn>
+          </Link>
         </div>
       </div>
 
       <div
         style={{
-          padding: "6px 24px",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--accent-soft)",
-          color: "var(--accent-soft-fg)",
-          fontSize: 12,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
+          flex: 1,
+          overflow: "auto",
+          padding: 24,
+          display: "grid",
+          gridTemplateColumns: "repeat(5, 1fr)",
+          gap: 12,
+          gridAutoRows: "min-content",
         }}
       >
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
-        3 new events since you opened this view <span style={{ flex: 1 }} />
-        <button
-          type="button"
+        {needsReview.length > 0 && (
+          <Link
+            href="/team/admin/projects"
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 14px",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              background: "var(--accent-soft)",
+              color: "var(--accent-soft-fg)",
+              textDecoration: "none",
+              fontSize: 13,
+            }}
+          >
+            <Badge kind="warn" icon={<I.flag />}>Needs review</Badge>
+            <span>
+              {needsReview.length} auto-created project{needsReview.length === 1 ? "" : "s"} awaiting confirmation
+            </span>
+            <span style={{ flex: 1 }} />
+            <span style={{ color: "var(--accent)", fontWeight: 500 }}>Review →</span>
+          </Link>
+        )}
+
+        {kpis.map((c, i) => (
+          <div
+            key={i}
+            style={{
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: 14,
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {c.label}
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6 }}>
+              <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--fg-strong)", fontVariantNumeric: "tabular-nums" }}>
+                {c.v}
+              </div>
+              <Sparkline data={c.spark} w={70} h={20} stroke={c.hue ? `oklch(0.6 0.16 ${c.hue})` : "var(--accent)"} />
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-muted)", marginTop: 4 }}>{c.sub}</div>
+          </div>
+        ))}
+
+        <section
           style={{
-            background: "transparent",
-            border: "none",
-            color: "inherit",
-            cursor: "pointer",
-            fontWeight: 500,
-            fontSize: 12,
+            gridColumn: "1 / -1",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
           }}
         >
-          Show new ↑
-        </button>
-      </div>
+          <div
+            style={{
+              padding: "12px 14px",
+              borderBottom: "1px solid var(--border)",
+              display: "flex",
+              alignItems: "baseline",
+              gap: 8,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Org-wide activity</h3>
+            <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>across all projects · last 90 days</span>
+          </div>
+          <div style={{ padding: "16px 16px 18px" }}>
+            <Heatmap days={orgSeries} hue={212} />
+          </div>
+        </section>
 
-      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <div style={{ height: "100%", overflowY: "auto" }}>
-          {events.map((e, idx) => {
-            const m = memberById(persona, e.member);
-            const p =
-              projectById(persona, e.project) ??
-              ({ id: e.project, name: e.project, hue: 240 } as { id: string; name: string; hue: number });
-            const isInsight = e.kind.startsWith("insight.");
-            const tag = e.meta?.tag;
-            const tm = tag ? TAG_MAP[tag] : null;
+        <section
+          style={{
+            gridColumn: "1 / span 3",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Top projects</h3>
+            <span style={{ flex: 1 }} />
+            <Link href="/team/projects" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
+              All projects →
+            </Link>
+          </div>
+          <div>
+            {topProjects.map(({ p, s }, idx) => (
+              <Link
+                key={p.id}
+                href={`/team/projects/${p.id}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "16px 1fr 110px 90px 110px 70px",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "10px 14px",
+                  borderBottom: idx < topProjects.length - 1 ? "1px solid var(--border)" : "none",
+                  textDecoration: "none",
+                  color: "inherit",
+                  fontSize: 13,
+                }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: `oklch(0.65 0.13 ${p.hue})` }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, color: "var(--fg-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.name}
+                  </div>
+                  <code className="mono" style={{ fontSize: 11, color: "var(--fg-faint)" }}>{p.repo}</code>
+                </div>
+                <Sparkline data={projectSpark(s.sessions)} w={100} h={20} stroke={`oklch(0.6 0.13 ${p.hue})`} />
+                <div style={{ fontSize: 12, color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}>
+                  {s.sessions.toLocaleString()} sessions
+                </div>
+                <div style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+                  <span style={{ color: "oklch(0.55 0.13 145)" }}>+{k(s.linesAdded)}</span>
+                  <span style={{ color: "var(--fg-faint)" }}> / </span>
+                  <span style={{ color: "oklch(0.55 0.16 28)" }}>−{k(s.linesRemoved)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: p.blockers > 0 ? "oklch(0.55 0.16 28)" : "var(--fg-faint)", textAlign: "right" }}>
+                  {p.blockers > 0 ? `${p.blockers} blocker${p.blockers === 1 ? "" : "s"}` : "—"}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
 
-            if (!m) return null;
+        <section
+          style={{
+            gridColumn: "4 / span 2",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Top contributors</h3>
+            <span style={{ flex: 1 }} />
+            <Link href="/team/members" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
+              All members →
+            </Link>
+          </div>
+          <div>
+            {topContributors.map(({ m, s }, idx) => (
+              <div
+                key={m.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "24px 1fr auto",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 14px",
+                  borderBottom: idx < topContributors.length - 1 ? "1px solid var(--border)" : "none",
+                  fontSize: 13,
+                }}
+              >
+                <Avatar m={m} size={22} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, color: "var(--fg-strong)" }}>{m.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+                    {m.role} · {s.sessions} session{s.sessions === 1 ? "" : "s"}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                  <span style={{ color: "oklch(0.55 0.13 145)" }}>+{k(s.linesAdded)}</span>
+                  <span style={{ color: "var(--fg-faint)" }}> / </span>
+                  <span style={{ color: "oklch(0.55 0.16 28)" }}>−{k(s.linesRemoved)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-            const RowWrapper = ({ children }: { children: React.ReactNode }) =>
-              e.session_id ? (
-                <Link
-                  href={`/team/sessions/${e.session_id}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "90px 24px 1fr auto",
-                    alignItems: "start",
-                    gap: 12,
-                    padding: "var(--row-pad-y) 24px",
-                    borderBottom: "1px solid var(--border)",
-                    fontSize: 13,
-                    minHeight: "var(--row-h)",
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  {children}
-                </Link>
-              ) : (
+        <section
+          style={{
+            gridColumn: "1 / -1",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Recent insights</h3>
+            <span style={{ flex: 1 }} />
+            <Link href="/team/insights" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
+              View all →
+            </Link>
+          </div>
+          <div>
+            {recentInsights.map((it, idx) => {
+              const m = memberById(persona, it.member);
+              const p = projectById(persona, it.project);
+              const tm = TAG_MAP[it.type];
+              return (
                 <div
+                  key={idx}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "90px 24px 1fr auto",
-                    alignItems: "start",
+                    gridTemplateColumns: "110px 1fr 200px auto",
                     gap: 12,
-                    padding: "var(--row-pad-y) 24px",
-                    borderBottom: "1px solid var(--border)",
-                    fontSize: 13,
-                    minHeight: "var(--row-h)",
+                    padding: "10px 14px",
+                    borderBottom: idx < recentInsights.length - 1 ? "1px solid var(--border)" : "none",
+                    alignItems: "start",
                   }}
                 >
-                  {children}
+                  <Badge kind={tm[0]} icon={tm[1]()}>{tm[2]}</Badge>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-strong)" }}>{it.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--fg-muted)", marginTop: 2, lineHeight: 1.45 }}>{it.text}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-muted)", minWidth: 0 }}>
+                    {p && <span style={{ width: 8, height: 8, borderRadius: 2, background: `oklch(0.65 0.13 ${p.hue})` }} />}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p?.name ?? it.project}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-faint)" }}>
+                    {m && <Avatar m={m} size={18} />}
+                    <span>{it.t} ago</span>
+                  </div>
                 </div>
               );
-
-            return (
-              <RowWrapper key={idx}>
-                <div
-                  style={{
-                    color: "var(--fg-faint)",
-                    fontSize: 11.5,
-                    fontVariantNumeric: "tabular-nums",
-                    paddingTop: 2,
-                  }}
-                >
-                  {e.t} ago
-                </div>
-                <div style={{ paddingTop: 1 }}>
-                  <Avatar m={m} size={20} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 500, color: "var(--fg-strong)" }}>{m.name}</span>
-                    {tm && (
-                      <Badge kind={tm[0]} icon={tm[1]()}>
-                        {tm[2]}
-                      </Badge>
-                    )}
-                    {e.kind === "commit" && (
-                      <Badge kind="neutral" icon={<I.commit />}>
-                        Commit
-                      </Badge>
-                    )}
-                    {e.kind === "session.started" && (
-                      <Badge kind="info" icon={<I.session />}>
-                        Session start
-                      </Badge>
-                    )}
-                    {e.kind === "session.ended" && (
-                      <Badge kind="neutral" icon={<I.session />}>
-                        Session end
-                      </Badge>
-                    )}
-                    {e.kind === "project.created" && (
-                      <Badge kind="warn" icon={<I.flag />}>
-                        Needs review
-                      </Badge>
-                    )}
-                    <span style={{ color: "var(--fg-faint)" }}>·</span>
-                    <a
-                      href="#"
-                      style={{
-                        color: "var(--fg-muted)",
-                        textDecoration: "none",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 2,
-                          background: `oklch(0.65 0.13 ${p.hue})`,
-                        }}
-                      />
-                      {p.name}
-                    </a>
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 3,
-                      color: isInsight ? "var(--fg-strong)" : "var(--fg)",
-                      fontWeight: isInsight ? 450 : 400,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {e.text}
-                  </div>
-                  {e.meta?.sha && (
-                    <div
-                      style={{
-                        marginTop: 4,
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "center",
-                        fontSize: 11.5,
-                        color: "var(--fg-muted)",
-                      }}
-                    >
-                      <code
-                        className="mono"
-                        style={{
-                          background: "var(--bg-muted)",
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          fontSize: 11,
-                        }}
-                      >
-                        {e.meta.sha}
-                      </code>
-                      <span>{e.meta.files} files</span>
-                      <span style={{ color: "oklch(0.55 0.13 145)" }}>+{e.meta.plus}</span>
-                      <span style={{ color: "oklch(0.55 0.16 28)" }}>−{e.meta.minus}</span>
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--fg-faint)",
-                    cursor: "pointer",
-                    padding: 2,
-                  }}
-                >
-                  <I.more />
-                </button>
-              </RowWrapper>
-            );
-          })}
-        </div>
+            })}
+          </div>
+        </section>
       </div>
     </>
   );
+}
+
+function k(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return n.toLocaleString();
+}
+
+function signed(n: number): string {
+  if (n > 0) return `+${k(n)}`;
+  if (n < 0) return `−${k(Math.abs(n))}`;
+  return "0";
+}
+
+function spark(data: number[]): number[] {
+  if (data.length === 0) return [0, 0, 0, 0];
+  return data;
 }

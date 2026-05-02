@@ -240,3 +240,86 @@ export function lastNDaysActivity(
   }
   return out;
 }
+
+export function orgDailyActivity(persona: Persona, days = 91, endDate: Date = new Date()): ActivityDay[] {
+  const seriesByProject = persona.projects.map((p) => lastNDaysActivity("project", p.id, days, endDate));
+  if (seriesByProject.length === 0) return [];
+  const out: ActivityDay[] = [];
+  for (let i = 0; i < days; i++) {
+    const date = seriesByProject[0][i]?.date ?? "";
+    let count = 0;
+    for (const series of seriesByProject) count += series[i]?.count ?? 0;
+    out.push({ date, count });
+  }
+  return out;
+}
+
+export type WeekStats = { sessions: number; linesAdded: number; linesRemoved: number };
+
+function weekStatsFromSeries(series: ActivityDay[], rand: () => number): WeekStats {
+  const last7 = series.slice(-7);
+  const sessions = last7.reduce((acc, d) => acc + d.count, 0);
+  const addedPerSession = 22 + Math.floor(rand() * 30); // 22..51
+  const removedPerSession = 6 + Math.floor(rand() * 12); // 6..17
+  return {
+    sessions,
+    linesAdded: sessions * addedPerSession,
+    linesRemoved: sessions * removedPerSession,
+  };
+}
+
+export function projectWeekStats(persona: Persona, projectId: string): WeekStats {
+  const rand = mulberry32(hashSeed(`pweek:${projectId}`));
+  const series = lastNDaysActivity("project", projectId);
+  return weekStatsFromSeries(series, rand);
+}
+
+export function memberWeekStats(persona: Persona, memberId: string): WeekStats {
+  const m = memberById(persona, memberId);
+  if (!m) return { sessions: 0, linesAdded: 0, linesRemoved: 0 };
+  // Distribute project sessions across project members with a hashed per-member bias.
+  const rand = mulberry32(hashSeed(`mweek:${memberId}`));
+  let sessions = 0;
+  for (const pid of m.projects) {
+    const p = projectById(persona, pid);
+    if (!p) continue;
+    const share = 0.55 + rand() * 0.55; // 0.55..1.10
+    sessions += Math.max(0, Math.round((p.sessions7d / Math.max(1, p.members)) * share));
+  }
+  const addedPerSession = 20 + Math.floor(rand() * 32);
+  const removedPerSession = 5 + Math.floor(rand() * 13);
+  return {
+    sessions,
+    linesAdded: sessions * addedPerSession,
+    linesRemoved: sessions * removedPerSession,
+  };
+}
+
+export type OrgStats7d = {
+  sessions: number;
+  decisions: number;
+  blockers: number;
+  linesAdded: number;
+  linesRemoved: number;
+  linesNet: number;
+  activeMembers: number;
+};
+
+export function orgStats7d(persona: Persona): OrgStats7d {
+  const projectTotals = persona.projects.map((p) => projectWeekStats(persona, p.id));
+  const sessions = projectTotals.reduce((acc, s) => acc + s.sessions, 0);
+  const linesAdded = projectTotals.reduce((acc, s) => acc + s.linesAdded, 0);
+  const linesRemoved = projectTotals.reduce((acc, s) => acc + s.linesRemoved, 0);
+  const blockers = persona.projects.reduce((acc, p) => acc + p.blockers, 0);
+  const decisions = insights.filter((i) => i.type === "decision").length;
+  const activeMembers = persona.members.filter((m) => m.status === "active").length;
+  return {
+    sessions,
+    decisions,
+    blockers,
+    linesAdded,
+    linesRemoved,
+    linesNet: linesAdded - linesRemoved,
+    activeMembers,
+  };
+}

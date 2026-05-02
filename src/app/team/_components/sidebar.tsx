@@ -15,9 +15,10 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { id: "timeline", href: "/team", label: "Timeline", icon: I.timeline, badge: "live" },
+  { id: "overview", href: "/team", label: "Overview", icon: I.overview },
+  { id: "timeline", href: "/team/timeline", label: "Timeline", icon: I.timeline, badge: "live" },
   { id: "projects", href: "/team/projects", label: "Projects", icon: I.projects },
-  { id: "members", href: "/team/members", label: "Members", icon: I.members },
+  { id: "members", href: "/team/members", label: "Members", icon: I.members,  },
   { id: "insights", href: "/team/insights", label: "Insights", icon: I.insights },
   { id: "reports", href: "/team/reports", label: "Reports", icon: I.reports },
 ];

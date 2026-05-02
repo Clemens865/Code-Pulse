@@ -25,6 +25,14 @@ const make =
   );
 
 export const I = {
+  overview: make(
+    <>
+      <rect x="3" y="3" width="7" height="9" rx="1.5" />
+      <rect x="14" y="3" width="7" height="5" rx="1.5" />
+      <rect x="3" y="15" width="7" height="6" rx="1.5" />
+      <rect x="14" y="11" width="7" height="10" rx="1.5" />
+    </>,
+  ),
   timeline: make(<path d="M3 6h18M3 12h12M3 18h7" />),
   projects: make(
     <>
