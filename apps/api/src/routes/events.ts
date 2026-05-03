@@ -9,6 +9,7 @@ import { workstationAuth } from "../auth/workstation.js";
 import { problem } from "../lib/errors.js";
 import { resolveOrCreateProject } from "../lib/projects.js";
 import { applyRedaction } from "../lib/redaction.js";
+import { deriveEvent } from "../lib/derive.js";
 import {
   ingestRequestSchema,
   type IngestEvent,
@@ -122,6 +123,27 @@ events.post("/events", zValidator("json", ingestRequestSchema, (result, c) => {
       result.results.push({ id: row.id, status: "duplicate" });
     }
   }
+
+  // Project event_log rows into the typed denormalized tables (sessions /
+  // tool_events / insights / file_activity) that the dashboard reads from.
+  // Only newly-accepted rows; duplicates were already projected on first arrival.
+  await Promise.all(
+    rows
+      .filter((r) => insertedIds.has(r.id))
+      .map((r) =>
+        deriveEvent({
+          id: r.id,
+          orgId: r.orgId,
+          memberId: r.memberId,
+          projectId: r.projectId,
+          sessionId: r.sessionId ?? null,
+          eventKind: r.eventKind,
+          payload: (r.payload ?? {}) as Record<string, unknown>,
+          clientMeta: (r.clientMeta ?? {}) as Record<string, unknown>,
+          hookTs: r.hookTs,
+        }),
+      ),
+  );
 
   // Best-effort heartbeat update for the workstation.
   await db

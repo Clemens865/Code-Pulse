@@ -293,6 +293,30 @@ export const insights = pgTable("insights", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const toolEvents = pgTable("tool_events", {
+  id: uuid("id").primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  sessionId: uuid("session_id").notNull().references(() => sessions.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").notNull().references(() => members.id, { onDelete: "restrict" }),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+  toolName: text("tool_name").notNull(),
+  ts: timestamp("ts", { withTimezone: true }).notNull(),
+  filePath: text("file_path"),
+  language: text("language"),
+  linesAdded: integer("lines_added").notNull().default(0),
+  linesRemoved: integer("lines_removed").notNull().default(0),
+  command: text("command"),
+  detectedFramework: text("detected_framework"),
+  commandFailed: boolean("command_failed").notNull().default(false),
+  searchPattern: text("search_pattern"),
+  agentType: text("agent_type"),
+  agentDescription: text("agent_description"),
+  skillName: text("skill_name"),
+  skillArgs: text("skill_args"),
+  diffExcerpt: text("diff_excerpt"),
+  metadata: jsonb("metadata").notNull().default({}),
+});
+
 export const fileActivity = pgTable("file_activity", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
