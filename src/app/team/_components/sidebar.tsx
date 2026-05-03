@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { I } from "./icons";
 import { Avatar, Badge, Kbd } from "./primitives";
 import type { Persona } from "../_data/sample";
+import { api } from "../_data/api";
 
 type NavItem = {
   id: string;
@@ -250,22 +251,55 @@ export function Sidebar({
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px" }}>
           <Avatar m={persona.members[0]} size={22} />
           {!collapsed && (
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
+            <>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {persona.members[0].name}
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--fg-faint)" }}>
+                  {persona.org.plan}
+                </div>
+              </div>
+              <button
+                type="button"
+                title="Sign out"
+                onClick={async () => {
+                  try {
+                    await api.logout();
+                  } catch {
+                    // ignore — we'll reload anyway
+                  }
+                  window.location.reload();
+                }}
                 style={{
-                  fontSize: 12,
-                  fontWeight: 500,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 24,
+                  height: 24,
+                  border: "1px solid transparent",
+                  borderRadius: 5,
+                  background: "transparent",
+                  color: "var(--fg-faint)",
+                  cursor: "pointer",
+                  flexShrink: 0,
                 }}
               >
-                {persona.members[0].name}
-              </div>
-              <div style={{ fontSize: 10.5, color: "var(--fg-faint)" }}>
-                {persona.org.plan}
-              </div>
-            </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </>
           )}
         </div>
       </div>

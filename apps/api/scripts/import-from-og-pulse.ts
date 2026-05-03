@@ -501,7 +501,7 @@ async function importToolEvents(
     if (values.length === 0) continue;
     const inserted = await sql`
       INSERT INTO tool_events ${sql(
-        values as readonly Record<string, never>[],
+        values as unknown as readonly Record<string, never>[],
         "id", "org_id", "session_id", "member_id", "project_id",
         "tool_name", "ts", "file_path", "language", "lines_added", "lines_removed",
         "command", "detected_framework", "command_failed", "search_pattern",
@@ -689,7 +689,7 @@ async function importDailySummaries(
     if (values.length === 0) continue;
     const inserted = await sql`
       INSERT INTO daily_summaries ${sql(
-        values as readonly Record<string, never>[],
+        values as unknown as readonly Record<string, never>[],
         "org_id", "project_id", "date",
         "session_count", "total_duration_seconds",
         "lines_added", "lines_removed", "net_lines",
@@ -901,7 +901,7 @@ async function synthesizeEventLog(
   let n = 0;
   for (const batch of chunk(evs, 500)) {
     const inserted = await sql`
-      INSERT INTO event_log ${sql(batch as readonly Record<string, never>[], "id", "org_id", "member_id", "project_id", "session_id", "event_kind", "payload", "hook_ts", "redaction_applied", "received_at")}
+      INSERT INTO event_log ${sql(batch as unknown as readonly Record<string, never>[], "id", "org_id", "member_id", "project_id", "session_id", "event_kind", "payload", "hook_ts", "redaction_applied", "received_at")}
       ON CONFLICT (id) DO NOTHING
       RETURNING id
     `;

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { I } from "../_components/icons";
 import {
   AvatarStack,
@@ -17,6 +18,7 @@ const sparkPattern = [3, 5, 4, 7, 9, 6, 11, 8, 12, 14, 11, 17];
 
 export default function ProjectListPage() {
   const { openPalette, persona } = useShell();
+  const router = useRouter();
   const ps = persona.projects;
 
   return (
@@ -82,7 +84,15 @@ export default function ProjectListPage() {
           </thead>
           <tbody>
             {ps.map((p) => (
-              <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              <tr
+                key={p.id}
+                onClick={(e) => {
+                  // Don't navigate when clicking nested interactive elements.
+                  const t = e.target as HTMLElement;
+                  if (t.closest("a, button")) return;
+                  router.push(`/team/projects/${p.id}`);
+                }}
+                style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}>
                 <td style={cell({ left: true })}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span
