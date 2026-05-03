@@ -71,3 +71,27 @@ auth.post("/auth/logout", async (c) => {
   clearSessionCookie(c);
   return c.json({ ok: true });
 });
+
+// Dev-only: list available orgs and their members so the dev sign-in page can
+// render a clickable identity picker without first authenticating.
+auth.get("/auth/dev-list", async (c) => {
+  if (env.NODE_ENV === "production") {
+    return problem(c, 404, "not_found", "Dev list is not enabled in production");
+  }
+  const orgs = await db.query.orgs.findMany({
+    columns: { id: true, name: true, slug: true, plan: true },
+    orderBy: (o, { asc }) => asc(o.name),
+  });
+  const out = await Promise.all(
+    orgs.map(async (o) => {
+      const members = await db.query.members.findMany({
+        where: (m, { eq }) => eq(m.orgId, o.id),
+        columns: { id: true, name: true, email: true, role: true, status: true },
+        orderBy: (m, { asc }) => asc(m.name),
+        limit: 10,
+      });
+      return { ...o, members };
+    }),
+  );
+  return c.json({ orgs: out });
+});

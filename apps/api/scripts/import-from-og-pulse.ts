@@ -501,7 +501,7 @@ async function importToolEvents(
     if (values.length === 0) continue;
     const inserted = await sql`
       INSERT INTO tool_events ${sql(
-        values,
+        values as readonly Record<string, never>[],
         "id", "org_id", "session_id", "member_id", "project_id",
         "tool_name", "ts", "file_path", "language", "lines_added", "lines_removed",
         "command", "detected_framework", "command_failed", "search_pattern",
@@ -689,7 +689,7 @@ async function importDailySummaries(
     if (values.length === 0) continue;
     const inserted = await sql`
       INSERT INTO daily_summaries ${sql(
-        values,
+        values as readonly Record<string, never>[],
         "org_id", "project_id", "date",
         "session_count", "total_duration_seconds",
         "lines_added", "lines_removed", "net_lines",
@@ -747,6 +747,7 @@ async function importBlueprintRuns(
   for (const r of rows) {
     const pid = pmap.get(r.project);
     if (!pid) continue;
+    const stepResults = (jsonOrNull(r.step_results) ?? []) as never;
     const inserted = await sql`
       INSERT INTO blueprint_runs (
         id, org_id, member_id, project_id, session_id,
@@ -758,7 +759,7 @@ async function importBlueprintRuns(
       VALUES (
         ${r.id}, ${orgId}, ${memberId}, ${pid}, ${r.session_id},
         ${r.blueprint}, ${r.input}, ${r.status}, ${toIso(r.started_at)}, ${toIso(r.completed_at)}, ${r.duration_ms},
-        ${r.step_count}, ${r.steps_done}, ${r.steps_failed}, ${jsonOrNull(r.step_results) ?? []}::jsonb,
+        ${r.step_count}, ${r.steps_done}, ${r.steps_failed}, ${stepResults}::jsonb,
         ${r.worktree_path}, ${r.worktree_branch}, ${r.base_branch},
         ${r.source_file}, ${r.source_mtime}, ${toIso(r.ingested_at)}
       )
@@ -900,7 +901,7 @@ async function synthesizeEventLog(
   let n = 0;
   for (const batch of chunk(evs, 500)) {
     const inserted = await sql`
-      INSERT INTO event_log ${sql(batch, "id", "org_id", "member_id", "project_id", "session_id", "event_kind", "payload", "hook_ts", "redaction_applied", "received_at")}
+      INSERT INTO event_log ${sql(batch as readonly Record<string, never>[], "id", "org_id", "member_id", "project_id", "session_id", "event_kind", "payload", "hook_ts", "redaction_applied", "received_at")}
       ON CONFLICT (id) DO NOTHING
       RETURNING id
     `;

@@ -163,21 +163,27 @@ function SampleBanner() {
 }
 
 function DevLoginCard({ onLoggedIn }: { onLoggedIn: () => void }) {
-  const SMOKE_ORG = "00000000-0000-0000-0000-000000000001";
-  const SMOKE_MEMBER = "00000000-0000-0000-0000-0000000000a1";
-  const [busy, setBusy] = useState(false);
+  const [orgs, setOrgs] = useState<Awaited<ReturnType<typeof api.devList>>["orgs"] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null); // memberId being signed in
   const [err, setErr] = useState<string | null>(null);
 
-  const signIn = async () => {
-    setBusy(true);
+  useEffect(() => {
+    api
+      .devList()
+      .then((d) => setOrgs(d.orgs))
+      .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load identities"));
+  }, []);
+
+  const signIn = async (orgId: string, memberId: string) => {
+    setBusy(memberId);
     setErr(null);
     try {
-      await api.devLogin(SMOKE_ORG, SMOKE_MEMBER);
+      await api.devLogin(orgId, memberId);
       onLoggedIn();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Login failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -191,47 +197,126 @@ function DevLoginCard({ onLoggedIn }: { onLoggedIn: () => void }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 50,
+        padding: 20,
       }}
     >
       <div
         style={{
-          width: 380,
+          width: 460,
+          maxHeight: "85vh",
+          overflowY: "auto",
           background: "var(--bg)",
           borderRadius: 10,
           border: "1px solid var(--border)",
           boxShadow: "var(--shadow-modal)",
           padding: 20,
-          textAlign: "center",
         }}
       >
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Sign in</h2>
-        <p style={{ fontSize: 12.5, color: "var(--fg-muted)", marginTop: 8 }}>
-          The team API requires a session. In dev, sign in as the smoke owner —
-          real OAuth is the next sprint.
+        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Dev sign-in</h2>
+        <p style={{ fontSize: 12.5, color: "var(--fg-muted)", marginTop: 6, marginBottom: 16 }}>
+          Pick an identity. Real OAuth (Google / GitHub) replaces this in Phase A.4.
         </p>
-        <button
-          type="button"
-          onClick={signIn}
-          disabled={busy}
-          style={{
-            marginTop: 14,
-            width: "100%",
-            background: "var(--accent)",
-            color: "var(--fg-on-accent)",
-            border: "1px solid transparent",
-            borderRadius: 6,
-            padding: "8px 14px",
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: busy ? "wait" : "pointer",
-          }}
-        >
-          {busy ? "Signing in…" : "Sign in as Smoke (dev)"}
-        </button>
-        {err && (
-          <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--status-err-fg)" }}>{err}</div>
+
+        {!orgs && !err && (
+          <div style={{ fontSize: 12.5, color: "var(--fg-faint)" }}>Loading identities…</div>
         )}
+        {err && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--status-err-fg)",
+              background: "var(--status-err-bg)",
+              border: "1px solid var(--status-err-border)",
+              padding: "8px 10px",
+              borderRadius: 6,
+              marginBottom: 12,
+            }}
+          >
+            {err}
+          </div>
+        )}
+
+        {orgs?.map((org) => (
+          <div key={org.id} style={{ marginBottom: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 8,
+                marginBottom: 6,
+                paddingBottom: 4,
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg-strong)" }}>
+                {org.name}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+                {org.plan} · {org.members.length} member{org.members.length === 1 ? "" : "s"}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {org.members.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => signIn(org.id, m.id)}
+                  disabled={busy !== null}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "100%",
+                    padding: "8px 10px",
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    cursor: busy ? "wait" : "pointer",
+                    textAlign: "left",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      background: `oklch(0.62 0.13 ${hashHue(m.id)})`,
+                      color: "#fff",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {(m.name || m.email).split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase()}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-strong)" }}>
+                      {m.name || m.email}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+                      {m.email} · {m.role}
+                    </div>
+                  </span>
+                  {busy === m.id && (
+                    <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>signing in…</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
+}
+
+function hashHue(s: string): number {
+  const hues = [212, 156, 28, 340, 268, 192, 86, 12];
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return hues[h % hues.length];
 }

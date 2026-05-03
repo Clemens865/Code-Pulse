@@ -71,9 +71,18 @@ export type ApiTimelineEvent = {
   received_at: string;
 };
 
+export type DevListOrg = {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  members: Array<{ id: string; name: string; email: string; role: string; status: string }>;
+};
+
 export const api = {
   devLogin: (orgId: string, memberId: string) =>
     post<{ ok: boolean }>("/v1/auth/dev-login", { org_id: orgId, member_id: memberId }),
+  devList: () => get<{ orgs: DevListOrg[] }>("/v1/auth/dev-list"),
   me: () => get<{ member: ApiMember; org: ApiOrg }>("/v1/auth/me"),
   projects: () => get<{ projects: ApiProject[] }>("/v1/projects"),
   project: (id: string) =>
