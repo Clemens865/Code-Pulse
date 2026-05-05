@@ -89,7 +89,27 @@ fi
 [ -z "$REMOTE_URL" ] && [ -n "${CI_PROJECT_PATH:-}" ]     && REMOTE_URL="https://gitlab.com/${CI_PROJECT_PATH}.git"
 [ -z "$REMOTE_URL" ] && [ -n "${BUILD_REPOSITORY_URI:-}" ] && REMOTE_URL="${BUILD_REPOSITORY_URI}"
 
-# 5. Last resort: synthetic local: key. Fragments per cwd basename — explicitly
+# 5. Worktree fallback. If cwd is inside a git worktree of a repo that has no
+#    remote configured, all worktrees would otherwise fragment per basename.
+#    git rev-parse --git-common-dir returns the parent repo's .git path
+#    (which is shared across worktrees), so its parent dir is a stable
+#    canonical anchor — every worktree of /A/B/foo gets local:/A/B/foo.
+if [ -z "$REMOTE_URL" ] && [ -n "${CWD:-}" ]; then
+    COMMON_DIR="$(cd "$CWD" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null || true)"
+    if [ -n "$COMMON_DIR" ]; then
+        # Resolve to absolute and strip the trailing /.git
+        case "$COMMON_DIR" in
+          /*) ABS_COMMON="$COMMON_DIR" ;;
+          *)  ABS_COMMON="$(cd "$CWD" 2>/dev/null && cd "$(dirname "$COMMON_DIR")" 2>/dev/null && pwd)/$(basename "$COMMON_DIR")" ;;
+        esac
+        PARENT_REPO_DIR="$(dirname "$ABS_COMMON")"
+        if [ -d "$PARENT_REPO_DIR" ]; then
+            REMOTE_URL="local:$PARENT_REPO_DIR"
+        fi
+    fi
+fi
+
+# 6. Last resort: synthetic local: key. Fragments per cwd basename — explicitly
 #    bind via env or .claude-pulse-team.json to avoid this when running tools
 #    that spawn agents in temp directories (ruflow, etc.).
 [ -z "$REMOTE_URL" ] && [ -n "${CWD:-}" ] && REMOTE_URL="local://$(basename "$CWD")"
