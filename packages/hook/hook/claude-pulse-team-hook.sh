@@ -205,10 +205,13 @@ fi
 if [ -n "${SESSION_ID:-}" ] && [ -f "$SOLO_DIR/tracker.db" ] && [ -f "$TEAM_CONFIG" ] \
    && { [ "$HOOK_TYPE" = "Stop" ] || [ "$HOOK_TYPE" = "StopFailure" ]; }; then
 
-    # Pull the most-recent insights for this session out of OG's tracker.
-    # Limit guards against runaway emission if a session somehow accumulated thousands.
+    # Pull every insight for this session out of OG's tracker. Deterministic
+    # UUIDv5 IDs + outbox INSERT OR IGNORE collapse re-emission, so we can
+    # safely select all and let dedup do its work — sessions can produce
+    # hundreds of insights (p95=367 in the imported data) and the prior
+    # LIMIT 50 silently dropped older ones.
     OG_INSIGHTS="$(sqlite3 -separator $'\x1f' "$SOLO_DIR/tracker.db" \
-        "SELECT id, type, content FROM insights WHERE session_id = '$(sql_escape "$SESSION_ID")' ORDER BY id DESC LIMIT 50;" \
+        "SELECT id, type, content FROM insights WHERE session_id = '$(sql_escape "$SESSION_ID")' ORDER BY id DESC LIMIT 2000;" \
         2>/dev/null || true)"
 
     if [ -n "$OG_INSIGHTS" ]; then
