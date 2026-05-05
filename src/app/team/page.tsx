@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { I } from "./_components/icons";
 import { Avatar, AvatarStack, Badge, Btn, Sparkline } from "./_components/primitives";
 import { Topbar } from "./_components/topbar";
 import { Heatmap } from "./_components/heatmap";
 import { useShell } from "./_components/shell";
+import { api, type ApiOverviewReport } from "./_data/api";
 import {
   lastNDaysActivity,
   memberById,
@@ -24,25 +26,108 @@ const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactEle
 };
 
 export default function OverviewPage() {
-  const { openPalette, persona, insights } = useShell();
-  const stats = orgStats7d(persona);
-  const orgSeries = orgDailyActivity(persona);
+  const { openPalette, persona, insights, source } = useShell();
+  const [live, setLive] = useState<ApiOverviewReport | null>(null);
+
+  useEffect(() => {
+    if (source !== "live") {
+      setLive(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .reportsOverview()
+      .then((r) => {
+        if (!cancelled) setLive(r);
+      })
+      .catch(() => {
+        if (!cancelled) setLive(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source]);
+
   const needsReview = persona.projects.filter((p) => p.needsReview);
+
+  // Live overview wins when available; fall back to synthetic for sample mode.
+  const stats = live
+    ? {
+        sessions: live.org.sessions7d,
+        decisions: live.org.decisions7d,
+        blockers: live.org.open_blockers,
+        linesAdded: live.org.lines_added7d,
+        linesRemoved: live.org.lines_removed7d,
+        linesNet: live.org.lines_net7d,
+        activeMembers: live.org.active_members7d,
+      }
+    : (() => {
+        const s = orgStats7d(persona);
+        return {
+          sessions: s.sessions,
+          decisions: s.decisions,
+          blockers: s.blockers,
+          linesAdded: s.linesAdded,
+          linesRemoved: s.linesRemoved,
+          linesNet: s.linesNet,
+          activeMembers: s.activeMembers,
+        };
+      })();
+
+  const orgSeries = live
+    ? live.daily_activity.map((d) => ({ date: d.date, count: d.count }))
+    : orgDailyActivity(persona);
 
   const projectSpark = (sessions: number) =>
     Array.from({ length: 12 }, (_, i) => Math.max(0, Math.round((sessions / 12) * (0.6 + 0.6 * Math.sin(i / 1.7) + (i / 12) * 0.4))));
 
-  const topProjects = persona.projects
-    .filter((p) => !p.needsReview)
-    .map((p) => ({ p, s: projectWeekStats(persona, p.id) }))
-    .sort((a, b) => b.s.sessions - a.s.sessions)
-    .slice(0, 5);
+  const topProjects = live
+    ? live.top_projects.map((tp) => {
+        const p = projectById(persona, tp.id) ?? {
+          id: tp.id,
+          name: tp.name,
+          repo: "—",
+          members: 0,
+          sessions7d: tp.sessions7d,
+          blockers: tp.open_blockers,
+          lastActivity: "—",
+          redaction: "standard" as const,
+          needsReview: false,
+          hue: 212,
+        };
+        return {
+          p: { ...p, sessions7d: tp.sessions7d, blockers: tp.open_blockers },
+          s: { sessions: tp.sessions7d, linesAdded: tp.lines_added, linesRemoved: tp.lines_removed },
+        };
+      })
+    : persona.projects
+        .filter((p) => !p.needsReview)
+        .map((p) => ({ p, s: projectWeekStats(persona, p.id) }))
+        .sort((a, b) => b.s.sessions - a.s.sessions)
+        .slice(0, 5);
 
-  const topContributors = persona.members
-    .filter((m) => m.status !== "invited")
-    .map((m) => ({ m, s: memberWeekStats(persona, m.id) }))
-    .sort((a, b) => b.s.sessions - a.s.sessions)
-    .slice(0, 5);
+  const topContributors = live
+    ? live.top_contributors.map((tc) => {
+        const m = memberById(persona, tc.id) ?? {
+          id: tc.id,
+          name: tc.name,
+          role: "Engineer" as const,
+          init: tc.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase(),
+          last: "—",
+          hue: 212,
+          projects: [],
+          status: "active" as const,
+        };
+        return {
+          m: { ...m, name: tc.name },
+          s: { sessions: tc.sessions7d, linesAdded: tc.lines_added, linesRemoved: tc.lines_removed },
+        };
+      })
+    : persona.members
+        .filter((m) => m.status !== "invited")
+        .map((m) => ({ m, s: memberWeekStats(persona, m.id) }))
+        .sort((a, b) => b.s.sessions - a.s.sessions)
+        .slice(0, 5);
 
   const recentInsights = insights.slice(0, 6);
 

@@ -124,6 +124,7 @@ export const api = {
     }>(`/v1/insights${qs ? `?${qs}` : ""}`);
   },
   reportsWeekly: () => get<ApiWeeklyReport>("/v1/reports/weekly"),
+  reportsOverview: () => get<ApiOverviewReport>("/v1/reports/overview"),
   session: (id: string) => get<ApiSessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   // Admin
   inviteMember: (email: string, name: string | undefined, role: ApiRole) =>
@@ -211,6 +212,36 @@ export type ApiSessionDetail = {
     payload: Record<string, unknown>;
     hook_ts: string;
     received_at: string;
+  }>;
+};
+
+export type ApiOverviewReport = {
+  generated_at: string;
+  org: {
+    sessions7d: number;
+    decisions7d: number;
+    open_blockers: number;
+    lines_added7d: number;
+    lines_removed7d: number;
+    lines_net7d: number;
+    active_members7d: number;
+  };
+  daily_activity: Array<{ date: string; count: number }>;
+  top_projects: Array<{
+    id: string;
+    name: string;
+    sessions7d: number;
+    open_blockers: number;
+    lines_added: number;
+    lines_removed: number;
+  }>;
+  top_contributors: Array<{
+    id: string;
+    name: string;
+    role: string;
+    sessions7d: number;
+    lines_added: number;
+    lines_removed: number;
   }>;
 };
 
