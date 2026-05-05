@@ -32,7 +32,10 @@ export async function sync(opts: { quiet?: boolean } = {}): Promise<{
       project: { remote_url: row.remote_url ?? "" },
       client: safeJson<IngestEvent["client"]>(row.client_meta) ?? {},
       hook_ts: row.hook_ts,
-      payload: safeJson<Record<string, unknown>>(row.payload) ?? {},
+      // Server expects payload to be an object. The bash hook sometimes stores
+      // a JSON-encoded primitive (e.g. last_assistant_message is a string for
+      // Stop events). Normalize: wrap non-object values under a `value` key.
+      payload: normalizePayload(safeJson<unknown>(row.payload)),
     }));
 
     const res = await client.ingest(events);
@@ -97,4 +100,12 @@ function safeJson<T>(s: string): T | null {
   } catch {
     return null;
   }
+}
+
+function normalizePayload(v: unknown): Record<string, unknown> {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
+  }
+  if (v === null || v === undefined) return {};
+  return { value: v as unknown };
 }
