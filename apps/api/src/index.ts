@@ -14,6 +14,7 @@ import { insightsRoute } from "./routes/insights.js";
 import { reports } from "./routes/reports.js";
 import { admin } from "./routes/admin.js";
 import { sessionsRoute } from "./routes/sessions.js";
+import { startBackgroundJobs } from "./lib/jobs.js";
 
 const app = new Hono();
 
@@ -60,6 +61,9 @@ app.onError((err, c) => {
 const server = serve({ fetch: app.fetch, port: env.PORT, hostname: "0.0.0.0" }, (info) => {
   console.log(`[api] listening on http://${info.address}:${info.port}`);
 });
+
+// Periodic background work (crashed-session reclamation, etc.)
+startBackgroundJobs();
 
 const shutdown = (signal: string) => {
   console.log(`[api] received ${signal}, shutting down`);
