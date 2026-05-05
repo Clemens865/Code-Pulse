@@ -1,22 +1,105 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { I } from "../_components/icons";
-import { Avatar, Badge, Btn, Chip, Kbd } from "../_components/primitives";
+import { Avatar, Badge, Btn, Kbd } from "../_components/primitives";
 import { Topbar } from "../_components/topbar";
 import { useShell } from "../_components/shell";
-import { memberById, projectById, type InsightTag } from "../_data/sample";
+import { FilterDropdown } from "../_components/filter-dropdown";
+import { adaptApiInsights, api } from "../_data/api";
+import { memberById, projectById, type Insight, type InsightTag } from "../_data/sample";
 
-const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactElement, string]> = {
+type ExtType = "decision" | "blocker" | "progress" | "pattern" | "fix" | "context";
+
+const TAG_MAP: Record<ExtType, ["accent" | "err" | "ok" | "neutral" | "info", () => React.ReactElement, string]> = {
   decision: ["accent", () => <I.decision />, "Decision"],
   blocker: ["err", () => <I.blocker />, "Blocker"],
   progress: ["ok", () => <I.progress />, "Progress"],
+  pattern: ["info", () => <I.insights />, "Pattern"],
+  fix: ["neutral", () => <I.insights />, "Fix"],
+  context: ["neutral", () => <I.insights />, "Context"],
 };
 
-const QUERY = "rounding rule";
+const TYPE_OPTIONS: Array<{ id: ExtType; label: string }> = [
+  { id: "decision", label: "Decision" },
+  { id: "blocker", label: "Blocker" },
+  { id: "progress", label: "Progress" },
+  { id: "pattern", label: "Pattern" },
+  { id: "fix", label: "Fix" },
+  { id: "context", label: "Context" },
+];
 
 export default function InsightsPage() {
-  const { openPalette, persona, insights: allInsights } = useShell();
+  const { openPalette, persona, insights: shellInsights, source } = useShell();
+
+  const [query, setQuery] = useState("");
+  const [types, setTypes] = useState<string[]>([]);
+  const [projects, setProjects] = useState<string[]>([]);
+  const [members, setMembers] = useState<string[]>([]);
+
+  const [liveInsights, setLiveInsights] = useState<Insight[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Refetch from server when filters change (live mode). For sample mode,
+  // we filter shellInsights in-memory below.
+  useEffect(() => {
+    if (source !== "live") {
+      setLiveInsights(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    api
+      .insights({
+        q: query || undefined,
+        projects: projects.length > 0 ? projects : undefined,
+        types: types.length > 0 ? types : undefined,
+      })
+      .then((r) => {
+        if (!cancelled) setLiveInsights(adaptApiInsights(r.insights));
+      })
+      .catch(() => {
+        if (!cancelled) setLiveInsights(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source, query, projects, types]);
+
+  // Member filter applies client-side (api.insights doesn't expose it yet).
+  const allInsights = useMemo(() => {
+    const base = liveInsights ?? shellInsights;
+    if (members.length === 0) return base;
+    return base.filter((i) => members.includes(i.member));
+  }, [liveInsights, shellInsights, members]);
+
+  // For sample mode, also apply query / types / projects in-memory.
+  const filteredInsights = useMemo(() => {
+    if (source === "live") return allInsights;
+    let xs = allInsights;
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      xs = xs.filter((i) => (i.title + " " + i.text).toLowerCase().includes(q));
+    }
+    if (types.length > 0) xs = xs.filter((i) => types.includes(i.type));
+    if (projects.length > 0) xs = xs.filter((i) => projects.includes(i.project));
+    return xs;
+  }, [allInsights, source, query, types, projects]);
+
+  const projectOptions = useMemo(
+    () => persona.projects.map((p) => ({ id: p.id, label: p.name, hue: p.hue })),
+    [persona.projects],
+  );
+  const memberOptions = useMemo(
+    () =>
+      persona.members
+        .filter((m) => m.status !== "invited")
+        .map((m) => ({ id: m.id, label: m.name, hue: m.hue })),
+    [persona.members],
+  );
 
   return (
     <>
@@ -45,7 +128,8 @@ export default function InsightsPage() {
         >
           <I.search />
           <input
-            defaultValue={QUERY}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search decisions, blockers, progress…"
             style={{
               flex: 1,
@@ -58,48 +142,46 @@ export default function InsightsPage() {
             }}
           />
           <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
-            {allInsights.length} results
+            {filteredInsights.length} result{filteredInsights.length === 1 ? "" : "s"}
+            {loading ? " · loading…" : ""}
           </span>
           <Kbd>esc</Kbd>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-          <Chip hasValue>
-            <span style={{ color: "var(--accent)" }}>
-              <I.decision />
-            </span>{" "}
-            Decisions · 3
-          </Chip>
-          <Chip hasValue>
-            <span style={{ color: "oklch(0.55 0.16 28)" }}>
-              <I.blocker />
-            </span>{" "}
-            Blockers · 3
-          </Chip>
-          <Chip>
-            <span style={{ color: "oklch(0.55 0.13 145)" }}>
-              <I.progress />
-            </span>{" "}
-            Progress
-          </Chip>
+          <FilterDropdown
+            label="Type"
+            options={TYPE_OPTIONS}
+            selected={types}
+            onChange={setTypes}
+          />
           <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
-          <Chip>
-            Project <I.chevron />
-          </Chip>
-          <Chip>
-            Member <I.chevron />
-          </Chip>
-          <Chip>
-            Date range <I.chevron />
-          </Chip>
+          <FilterDropdown
+            label="Project"
+            options={projectOptions}
+            selected={projects}
+            onChange={setProjects}
+          />
+          <FilterDropdown
+            label="Member"
+            options={memberOptions}
+            selected={members}
+            onChange={setMembers}
+          />
         </div>
       </div>
       <div style={{ flex: 1, overflow: "auto" }}>
-        {allInsights.map((it, idx) => {
+        {filteredInsights.length === 0 && !loading && (
+          <div style={{ padding: "32px 24px", color: "var(--fg-faint)", textAlign: "center", fontSize: 13 }}>
+            No insights match the current filters.
+          </div>
+        )}
+        {filteredInsights.map((it, idx) => {
           const m = memberById(persona, it.member);
           const p = projectById(persona, it.project);
           if (!m || !p) return null;
-          const tm = TAG_MAP[it.type];
-          const parts = it.title.split(QUERY);
+          const tm = TAG_MAP[it.type as ExtType] ?? TAG_MAP.context;
+          const q = query.trim();
+          const parts = q ? it.title.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "i")) : [it.title];
           return (
             <div
               key={idx}
@@ -126,23 +208,25 @@ export default function InsightsPage() {
                     gap: 6,
                   }}
                 >
-                  {parts.map((part, i) => (
-                    <Fragment key={i}>
-                      {part}
-                      {i < parts.length - 1 && (
-                        <mark
-                          style={{
-                            background: "var(--accent-soft)",
-                            color: "var(--accent-soft-fg)",
-                            padding: "0 2px",
-                            borderRadius: 2,
-                          }}
-                        >
-                          {QUERY}
-                        </mark>
-                      )}
-                    </Fragment>
-                  ))}
+                  {q
+                    ? parts.map((part, i) =>
+                        i % 2 === 1 ? (
+                          <mark
+                            key={i}
+                            style={{
+                              background: "var(--accent-soft)",
+                              color: "var(--accent-soft-fg)",
+                              padding: "0 2px",
+                              borderRadius: 2,
+                            }}
+                          >
+                            {part}
+                          </mark>
+                        ) : (
+                          <Fragment key={i}>{part}</Fragment>
+                        ),
+                      )
+                    : it.title}
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--fg-muted)", marginTop: 3, lineHeight: 1.5 }}>
                   {it.text}
