@@ -15,7 +15,7 @@ export default function ProjectTimelinePage({ params }: { params: Promise<{ id: 
 
   useEffect(() => {
     let cancelled = false;
-    api.timeline(100, id).then((r) => {
+    api.timeline({ limit: 100, projects: [id] }).then((r) => {
       if (!cancelled) setEvents(adaptApiTimeline(r.events));
     }).catch(() => {}).finally(() => {
       if (!cancelled) setLoading(false);

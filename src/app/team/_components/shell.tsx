@@ -87,7 +87,7 @@ export function TeamShell({ children }: { children: React.ReactNode }) {
           api.me(),
           api.projects(),
           api.members(),
-          api.timeline(50),
+          api.timeline({ limit: 50 }),
           api.insights({}),
         ]);
         if (cancelled) return;

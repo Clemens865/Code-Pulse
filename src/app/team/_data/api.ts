@@ -100,9 +100,21 @@ export const api = {
       hot_files: Array<{ path: string; edits: number }>;
     }>(`/v1/projects/${encodeURIComponent(id)}`),
   members: () => get<{ members: ApiMember[] }>("/v1/members"),
-  timeline: (limit = 50, projectId?: string) => {
-    const params = new URLSearchParams({ limit: String(limit) });
-    if (projectId) params.set("project", projectId);
+  timeline: (
+    opts: {
+      limit?: number;
+      projects?: string[];
+      members?: string[];
+      kinds?: string[];
+      range?: "24h" | "7d" | "30d" | "90d";
+    } = {},
+  ) => {
+    const params = new URLSearchParams();
+    params.set("limit", String(opts.limit ?? 100));
+    if (opts.projects && opts.projects.length > 0) params.set("projects", opts.projects.join(","));
+    if (opts.members && opts.members.length > 0) params.set("members", opts.members.join(","));
+    if (opts.kinds && opts.kinds.length > 0) params.set("kinds", opts.kinds.join(","));
+    if (opts.range) params.set("range", opts.range);
     return get<{ events: ApiTimelineEvent[] }>(`/v1/timeline?${params}`);
   },
   insights: (opts: { q?: string; projects?: string[]; types?: string[] } = {}) => {

@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { I } from "../_components/icons";
-import { Avatar, Badge, Btn, Chip } from "../_components/primitives";
+import { Avatar, Badge, Btn } from "../_components/primitives";
 import { Topbar } from "../_components/topbar";
 import { useShell } from "../_components/shell";
-import { memberById, projectById, type InsightTag } from "../_data/sample";
+import { FilterDropdown, FilterRangeChip } from "../_components/filter-dropdown";
+import { adaptApiTimeline, api } from "../_data/api";
+import { memberById, projectById, type InsightTag, type TimelineEvent } from "../_data/sample";
 
 const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactElement, string]> = {
   decision: ["accent", () => <I.decision />, "Decision"],
@@ -13,8 +16,89 @@ const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactEle
   progress: ["ok", () => <I.progress />, "Progress"],
 };
 
+type Range = "24h" | "7d" | "30d" | "90d";
+
+const RANGE_OPTIONS: Array<{ id: Range; label: string }> = [
+  { id: "24h", label: "Last 24h" },
+  { id: "7d", label: "Last 7d" },
+  { id: "30d", label: "Last 30d" },
+  { id: "90d", label: "Last 90d" },
+];
+
+const TYPE_OPTIONS = [
+  { id: "session.start", label: "Session start" },
+  { id: "session.end", label: "Session end" },
+  { id: "insight.decision", label: "Decision" },
+  { id: "insight.blocker", label: "Blocker" },
+  { id: "insight.progress", label: "Progress" },
+  { id: "insight.pattern", label: "Pattern" },
+  { id: "insight.fix", label: "Fix" },
+  { id: "insight.context", label: "Context" },
+  { id: "tool.edit", label: "Edit" },
+  { id: "tool.write", label: "Write" },
+  { id: "tool.bash", label: "Bash" },
+  { id: "tool.read", label: "Read" },
+  { id: "tool.agent", label: "Agent" },
+  { id: "tool.skill", label: "Skill" },
+  { id: "tool.web_fetch", label: "WebFetch" },
+  { id: "tool.web_search", label: "WebSearch" },
+];
+
 export default function TimelinePage() {
-  const { openPalette, persona, timeline: events } = useShell();
+  const { openPalette, persona, timeline: shellEvents, source } = useShell();
+
+  const [projects, setProjects] = useState<string[]>([]);
+  const [members, setMembers] = useState<string[]>([]);
+  const [kinds, setKinds] = useState<string[]>([]);
+  const [range, setRange] = useState<Range>("24h");
+
+  const [liveEvents, setLiveEvents] = useState<TimelineEvent[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Refetch the timeline whenever any filter changes (live mode only).
+  useEffect(() => {
+    if (source !== "live") {
+      setLiveEvents(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    api
+      .timeline({ limit: 200, projects, members, kinds, range })
+      .then((r) => {
+        if (!cancelled) setLiveEvents(adaptApiTimeline(r.events));
+      })
+      .catch(() => {
+        if (!cancelled) setLiveEvents(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source, projects, members, kinds, range]);
+
+  const events = liveEvents ?? shellEvents;
+
+  const projectOptions = useMemo(
+    () => persona.projects.map((p) => ({ id: p.id, label: p.name, hue: p.hue, hint: p.repo })),
+    [persona.projects],
+  );
+  const memberOptions = useMemo(
+    () =>
+      persona.members
+        .filter((m) => m.status !== "invited")
+        .map((m) => ({ id: m.id, label: m.name, hue: m.hue, hint: m.role })),
+    [persona.members],
+  );
+
+  const clearAll = () => {
+    setProjects([]);
+    setMembers([]);
+    setKinds([]);
+  };
+  const anyActive = projects.length + members.length + kinds.length > 0;
 
   return (
     <>
@@ -53,25 +137,59 @@ export default function TimelinePage() {
           </Btn>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <Chip>
-            <I.filter /> Filters
-          </Chip>
-          <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
-          <Chip hasValue>
-            Project · 3 <I.chevron />
-          </Chip>
-          <Chip>
-            Member <I.chevron />
-          </Chip>
-          <Chip>
-            Type <I.chevron />
-          </Chip>
-          <Chip hasValue>
-            Last 24h <I.chevron />
-          </Chip>
+          {anyActive && (
+            <>
+              <button
+                type="button"
+                onClick={clearAll}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  background: "transparent",
+                  color: "var(--fg-muted)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                }}
+              >
+                <I.filter /> Clear filters
+              </button>
+              <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
+            </>
+          )}
+          <FilterDropdown
+            label="Project"
+            options={projectOptions}
+            selected={projects}
+            onChange={setProjects}
+            emptyText="No projects"
+          />
+          <FilterDropdown
+            label="Member"
+            options={memberOptions}
+            selected={members}
+            onChange={setMembers}
+            emptyText="No members"
+          />
+          <FilterDropdown
+            label="Type"
+            options={TYPE_OPTIONS}
+            selected={kinds}
+            onChange={setKinds}
+          />
+          <FilterRangeChip
+            label="Range"
+            options={RANGE_OPTIONS}
+            value={range}
+            onChange={setRange}
+          />
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
-            {events.length} events · updated just now
+            {events.length} events{loading ? " · loading…" : " · updated just now"}
           </span>
         </div>
       </div>
