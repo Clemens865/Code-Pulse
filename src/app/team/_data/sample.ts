@@ -60,6 +60,7 @@ export type TimelineEvent = {
   project: string;
   text: string;
   session_id?: string;
+  children_count?: number;
   meta?: {
     tag?: InsightTag;
     sha?: string;

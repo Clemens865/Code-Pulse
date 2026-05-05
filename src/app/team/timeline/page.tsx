@@ -305,6 +305,11 @@ export default function TimelinePage() {
                         Session start
                       </Badge>
                     )}
+                    {e.kind === "session.started" && (e.children_count ?? 0) > 0 && (
+                      <Badge kind="info">
+                        +{e.children_count} agent{e.children_count === 1 ? "" : "s"}
+                      </Badge>
+                    )}
                     {e.kind === "session.ended" && (
                       <Badge kind="neutral" icon={<I.session />}>
                         Session end

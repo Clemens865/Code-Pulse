@@ -126,6 +126,34 @@ function SessionView({
 
   return (
     <>
+      {data.parent_session_id && (
+        <div
+          style={{
+            padding: "8px 24px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--bg-muted)",
+            fontSize: 12.5,
+            color: "var(--fg-muted)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span style={{ color: "var(--fg-faint)" }}>↳</span>
+          <span>Sub-agent of</span>
+          <Link
+            href={`/team/sessions/${data.parent_session_id}`}
+            style={{
+              color: "var(--accent)",
+              textDecoration: "none",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11.5,
+            }}
+          >
+            session {data.parent_session_id.slice(0, 8)}
+          </Link>
+        </div>
+      )}
       {/* Header */}
       <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
@@ -146,6 +174,11 @@ function SessionView({
                 )}
               </h1>
               <Badge kind="neutral">{formatDuration(session.duration_seconds)}</Badge>
+              {data.children.length > 0 && (
+                <Badge kind="info">
+                  {data.children.length} agent{data.children.length === 1 ? "" : "s"}
+                </Badge>
+              )}
               {stats.bash_failures > 0 && (
                 <Badge kind="err">{stats.bash_failures} bash failures</Badge>
               )}
@@ -230,6 +263,60 @@ function SessionView({
           </div>
         ))}
       </div>
+
+      {/* Sub-agent sessions (if this session spawned any) */}
+      {data.children.length > 0 && (
+        <div style={{ borderBottom: "1px solid var(--border)" }}>
+          <div style={{ padding: "12px 24px 8px", display: "flex", alignItems: "baseline", gap: 8 }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
+              Sub-agent sessions · {data.children.length}
+            </h3>
+            <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
+              spawned in worktrees under this run
+            </span>
+          </div>
+          <div>
+            {data.children.map((child) => {
+              const childMember = memberFromPersona(child.member_id);
+              const dur = child.duration_seconds ?? 0;
+              return (
+                <Link
+                  key={child.id}
+                  href={`/team/sessions/${child.id}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "180px 1fr 100px 80px 70px",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "8px 24px",
+                    borderTop: "1px solid var(--border)",
+                    fontSize: 13,
+                    color: "var(--fg)",
+                    textDecoration: "none",
+                  }}
+                >
+                  <code className="mono" style={{ fontSize: 11.5, color: "var(--fg-muted)" }}>
+                    {child.id.slice(0, 8)}…
+                  </code>
+                  <span style={{ color: "var(--fg-strong)", display: "flex", alignItems: "center", gap: 8 }}>
+                    {childMember && <Avatar m={childMember} size={18} />}
+                    {childMember?.name ?? child.member_id.slice(0, 8)}
+                  </span>
+                  <span style={{ color: "var(--fg-faint)", fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
+                    {new Date(child.started_at).toLocaleTimeString()}
+                  </span>
+                  <span style={{ color: "var(--fg-muted)", fontSize: 12 }}>
+                    {dur > 0 ? formatDuration(dur) : "—"}
+                  </span>
+                  <Badge kind={child.status === "crashed" ? "err" : child.status === "active" ? "info" : "neutral"}>
+                    {child.status}
+                  </Badge>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Event timeline */}
       <div style={{ flex: 1, overflow: "auto" }}>

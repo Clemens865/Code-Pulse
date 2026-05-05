@@ -69,6 +69,7 @@ export type ApiTimelineEvent = {
   payload: Record<string, unknown>;
   hook_ts: string;
   received_at: string;
+  children_count?: number;
 };
 
 export type DevListOrg = {
@@ -262,6 +263,15 @@ export type ApiSessionDetail = {
     };
     scored_at: string | null;
   };
+  parent_session_id: string | null;
+  children: Array<{
+    id: string;
+    member_id: string;
+    started_at: string;
+    ended_at: string | null;
+    duration_seconds: number | null;
+    status: string;
+  }>;
   events: Array<{
     id: string;
     kind: string;
@@ -380,6 +390,7 @@ export function adaptApiTimeline(events: ApiTimelineEvent[]): TimelineEvent[] {
     project: e.project_id,
     text: extractText(e.payload),
     session_id: e.session_id ?? undefined,
+    children_count: e.children_count,
     meta: extractMeta(e.kind, e.payload),
   }));
 }

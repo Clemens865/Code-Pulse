@@ -89,13 +89,30 @@ sessionsRoute.get("/sessions/:id", async (c) => {
     columns: { id: true, name: true, email: true, role: true },
   });
 
-  // Stuck score (computed by the periodic job on lib/stuck.ts).
+  // Stuck score (computed by the periodic job on lib/stuck.ts) +
+  // tree linkage: the session's own parent_session_id and any children that
+  // point at this session as their parent (Sprint: agent tree).
   const stuckRow = await db.query.sessions.findFirst({
     where: (s, { and, eq }) => and(eq(s.id, id), eq(s.orgId, session.org_id)),
-    columns: { stuckScore: true, stuckSignals: true, stuckScoredAt: true },
+    columns: { stuckScore: true, stuckSignals: true, stuckScoredAt: true, parentSessionId: true },
   });
   const stuckScore = stuckRow ? parseFloat(stuckRow.stuckScore) : 0;
   const stuckSignals = (stuckRow?.stuckSignals ?? {}) as Record<string, unknown>;
+  const parentSessionId = stuckRow?.parentSessionId ?? null;
+
+  const childRows = await db.query.sessions.findMany({
+    where: (s, { and, eq }) => and(eq(s.parentSessionId, id), eq(s.orgId, session.org_id)),
+    orderBy: (s, { asc }) => [asc(s.startedAt)],
+    columns: {
+      id: true,
+      memberId: true,
+      startedAt: true,
+      endedAt: true,
+      durationSeconds: true,
+      status: true,
+    },
+    limit: 50,
+  });
 
   return c.json({
     session: {
@@ -124,6 +141,15 @@ sessionsRoute.get("/sessions/:id", async (c) => {
       signals: stuckSignals,
       scored_at: stuckRow?.stuckScoredAt ?? null,
     },
+    parent_session_id: parentSessionId,
+    children: childRows.map((c) => ({
+      id: c.id,
+      member_id: c.memberId,
+      started_at: c.startedAt,
+      ended_at: c.endedAt,
+      duration_seconds: c.durationSeconds,
+      status: c.status,
+    })),
     events: events.map((e) => ({
       id: e.id,
       kind: e.kind,

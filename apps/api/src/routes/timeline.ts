@@ -9,7 +9,7 @@
 //   limit=<n>                  Page size, default 100, max 200
 
 import { Hono } from "hono";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { dashboardAuth } from "../auth/session.js";
 
@@ -87,6 +87,23 @@ timeline.get("/timeline", async (c) => {
     .orderBy(desc(schema.eventLog.receivedAt))
     .limit(limit);
 
+  // Children counts: for any session.start event, count sessions that
+  // declared this session as their parent (sub-agent runs).
+  const startSessionIds = rows
+    .filter((r) => r.kind === "session.start" && r.sessionId)
+    .map((r) => r.sessionId as string);
+  const childrenByParent = new Map<string, number>();
+  if (startSessionIds.length > 0) {
+    const counts = (await db.execute<{ parent_session_id: string; n: string }>(sql`
+      SELECT parent_session_id, COUNT(*)::text AS n
+        FROM sessions
+       WHERE org_id = ${session.org_id}
+         AND parent_session_id IN ${startSessionIds}
+       GROUP BY parent_session_id
+    `)) as unknown as Array<{ parent_session_id: string; n: string }>;
+    for (const row of counts) childrenByParent.set(row.parent_session_id, parseInt(row.n, 10));
+  }
+
   return c.json({
     events: rows.map((r) => ({
       id: r.id,
@@ -97,6 +114,9 @@ timeline.get("/timeline", async (c) => {
       payload: r.payload,
       hook_ts: r.hookTs,
       received_at: r.receivedAt,
+      children_count: r.kind === "session.start" && r.sessionId
+        ? childrenByParent.get(r.sessionId) ?? 0
+        : undefined,
     })),
   });
 });
