@@ -14,6 +14,7 @@ import { insightsRoute } from "./routes/insights.js";
 import { reports } from "./routes/reports.js";
 import { admin } from "./routes/admin.js";
 import { sessionsRoute } from "./routes/sessions.js";
+import { contextRoute } from "./routes/context.js";
 import { startBackgroundJobs } from "./lib/jobs.js";
 
 const app = new Hono();
@@ -48,6 +49,7 @@ app.route("/v1", insightsRoute);
 app.route("/v1", reports);
 app.route("/v1", admin);
 app.route("/v1", sessionsRoute);
+app.route("/v1", contextRoute);
 
 // Default 404.
 app.notFound((c) => problem(c, 404, "not_found", "Route not found"));
