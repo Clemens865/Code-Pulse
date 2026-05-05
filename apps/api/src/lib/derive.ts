@@ -5,6 +5,7 @@
 
 import { eq, sql } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
+import { resolveOpenBlocker } from "./resolution.js";
 
 export type DerivableEvent = {
   id: string;
@@ -166,6 +167,32 @@ async function deriveInsight(ev: DerivableEvent) {
       createdAt: ev.hookTs,
     })
     .onConflictDoNothing({ target: schema.insights.id });
+
+  // If the payload claims this insight resolves a previously-flagged blocker,
+  // trigram-match it against the project's open blockers and stamp resolved_at.
+  // Triggered by either an explicit `payload.resolves` field or a content line
+  // starting with "RESOLVED:" (the convention from the v2 prompt).
+  const explicitResolves = strOrNull(p.resolves);
+  const inlineResolves = extractResolvedLine(content);
+  const resolveText = explicitResolves ?? inlineResolves;
+  if (resolveText) {
+    const r = await resolveOpenBlocker(ev.orgId, ev.projectId, resolveText, ev.hookTs);
+    if (r.matched) {
+      console.log(
+        `[derive] resolved blocker ${r.blockerId} via similarity=${r.similarity.toFixed(2)} from insight ${ev.id}`,
+      );
+    }
+  }
+}
+
+function extractResolvedLine(content: string): string | null {
+  if (!content) return null;
+  for (const raw of content.split("\n")) {
+    const line = raw.trim();
+    const m = /^resolved:\s*(.+)$/i.exec(line);
+    if (m && m[1]) return m[1].trim();
+  }
+  return null;
 }
 
 async function upsertFileActivity(
