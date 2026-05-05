@@ -35,6 +35,7 @@ export async function deriveEvent(ev: DerivableEvent): Promise<void> {
 
 async function deriveSessionStart(ev: DerivableEvent) {
   if (!ev.sessionId) return;
+  const parentSessionId = parentSessionIdFromMeta(ev);
   await db
     .insert(schema.sessions)
     .values({
@@ -47,8 +48,17 @@ async function deriveSessionStart(ev: DerivableEvent) {
       hostname: strOrNull(ev.clientMeta.hostname),
       cloudEnv: strOrNull(ev.clientMeta.cloud_env),
       hookVersion: strOrNull(ev.clientMeta.hook_version),
+      parentSessionId,
     })
     .onConflictDoNothing({ target: schema.sessions.id });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function parentSessionIdFromMeta(ev: DerivableEvent): string | null {
+  const raw = strOrNull(ev.clientMeta.parent_session_id);
+  if (!raw || !UUID_RE.test(raw)) return null;
+  if (raw === ev.sessionId) return null;   // never self-reference
+  return raw.toLowerCase();
 }
 
 async function deriveSessionEnd(ev: DerivableEvent) {

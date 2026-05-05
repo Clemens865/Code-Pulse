@@ -3,6 +3,7 @@
 // When the SQL changes, mirror the changes here.
 
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -255,6 +256,7 @@ export const sessions = pgTable("sessions", {
   stuckScore: text("stuck_score").notNull().default("0"),
   stuckSignals: jsonb("stuck_signals").notNull().default({}),
   stuckScoredAt: timestamp("stuck_scored_at", { withTimezone: true }),
+  parentSessionId: uuid("parent_session_id").references((): AnyPgColumn => sessions.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

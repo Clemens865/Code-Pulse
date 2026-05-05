@@ -35,6 +35,34 @@ CWD="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)" || true
 TOOL_NAME="$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)" || true
 [ -z "$HOOK_TYPE" ] && exit 0
 
+# ───────────── agent-worktree anchor + parent-session sentinel ─────────────
+# Ruflo / Claude Agent SDK runs sub-agents in <parent>/.claude/worktrees/agent-*.
+# We anchor project identity to the parent repo (so agents don't fragment the
+# project list) and read a sentinel left by the orchestrator's SessionStart so
+# this session can be recorded as a child of the orchestrator session.
+AGENT_PARENT=""
+PARENT_SESSION_ID=""
+case "${CWD:-}" in
+    */.claude/worktrees/agent-*)
+        AGENT_PARENT_CANDIDATE="${CWD%/.claude/worktrees/agent-*}"
+        if [ -d "$AGENT_PARENT_CANDIDATE" ]; then
+            AGENT_PARENT="$AGENT_PARENT_CANDIDATE"
+            CWD="$AGENT_PARENT"   # rewrite for all subsequent identity resolution
+            if [ -f "$AGENT_PARENT/.claude/.pulse-session" ]; then
+                PARENT_SESSION_ID="$(head -c 64 "$AGENT_PARENT/.claude/.pulse-session" 2>/dev/null | tr -d '[:space:]' || true)"
+            fi
+        fi
+        ;;
+esac
+
+# Orchestrator/solo SessionStart: drop a sentinel so any sub-agents this
+# session spawns can find their parent session_id.
+if [ "$HOOK_TYPE" = "SessionStart" ] && [ -n "${SESSION_ID:-}" ] && [ -z "$AGENT_PARENT" ] && [ -n "${CWD:-}" ]; then
+    if [ -d "$CWD/.claude" ]; then
+        printf '%s' "$SESSION_ID" > "$CWD/.claude/.pulse-session" 2>/dev/null || true
+    fi
+fi
+
 # ───────────── 1. Delegate to original hook for local SQLite write ─────────────
 # This preserves the single-user dashboard and any context-injection it does.
 # We re-pipe the original stdin into the solo hook and capture its stdout so
@@ -192,7 +220,8 @@ SCHEMA
         --arg os "$OS_NAME" \
         --arg ce "$CLOUD_ENV" \
         --arg hn "$HOSTNAME_S" \
-        '{hook_version:$hv, os:$os, cloud_env:$ce, hostname:$hn}' 2>/dev/null || echo '{}')"
+        --arg ps "${PARENT_SESSION_ID:-}" \
+        '{hook_version:$hv, os:$os, cloud_env:$ce, hostname:$hn} + (if $ps != "" then {parent_session_id:$ps} else {} end)' 2>/dev/null || echo '{}')"
 
     if [ -n "$EVENT_ID" ]; then
         # SQLite escape: bind via parameters using .read isn't easy here; quote the values inline.
