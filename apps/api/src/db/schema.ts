@@ -3,6 +3,7 @@
 // When the SQL changes, mirror the changes here.
 
 import {
+  bigint,
   bigserial,
   boolean,
   customType,
@@ -247,6 +248,10 @@ export const sessions = pgTable("sessions", {
   hostname: text("hostname"),
   cloudEnv: text("cloud_env"),
   hookVersion: text("hook_version"),
+  inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+  outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+  cacheCreationInputTokens: bigint("cache_creation_input_tokens", { mode: "number" }).notNull().default(0),
+  cacheReadInputTokens: bigint("cache_read_input_tokens", { mode: "number" }).notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

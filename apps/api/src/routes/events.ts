@@ -126,24 +126,23 @@ events.post("/events", zValidator("json", ingestRequestSchema, (result, c) => {
 
   // Project event_log rows into the typed denormalized tables (sessions /
   // tool_events / insights / file_activity) that the dashboard reads from.
-  // Only newly-accepted rows; duplicates were already projected on first arrival.
-  await Promise.all(
-    rows
-      .filter((r) => insertedIds.has(r.id))
-      .map((r) =>
-        deriveEvent({
-          id: r.id,
-          orgId: r.orgId,
-          memberId: r.memberId,
-          projectId: r.projectId,
-          sessionId: r.sessionId ?? null,
-          eventKind: r.eventKind,
-          payload: (r.payload ?? {}) as Record<string, unknown>,
-          clientMeta: (r.clientMeta ?? {}) as Record<string, unknown>,
-          hookTs: r.hookTs,
-        }),
-      ),
-  );
+  // Only newly-accepted rows. Run sequentially in arrival order so that
+  // session.start always writes its row before session.end tries to update
+  // it (the OG hook can batch both into a single ingest call).
+  for (const r of rows) {
+    if (!insertedIds.has(r.id)) continue;
+    await deriveEvent({
+      id: r.id,
+      orgId: r.orgId,
+      memberId: r.memberId,
+      projectId: r.projectId,
+      sessionId: r.sessionId ?? null,
+      eventKind: r.eventKind,
+      payload: (r.payload ?? {}) as Record<string, unknown>,
+      clientMeta: (r.clientMeta ?? {}) as Record<string, unknown>,
+      hookTs: r.hookTs,
+    });
+  }
 
   // Best-effort heartbeat update for the workstation.
   await db

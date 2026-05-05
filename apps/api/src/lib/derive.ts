@@ -53,13 +53,39 @@ async function deriveSessionStart(ev: DerivableEvent) {
 async function deriveSessionEnd(ev: DerivableEvent) {
   if (!ev.sessionId) return;
   const summary = strOrNull(ev.payload.summary);
+
+  // Extract token usage from Claude Code's Stop hook payload, if present.
+  // Shape: payload.usage = { input_tokens, output_tokens,
+  //                          cache_creation_input_tokens,
+  //                          cache_read_input_tokens }
+  const usage = (ev.payload.usage ?? null) as Record<string, unknown> | null;
+  const inputTokens = numOrZero(usage?.input_tokens);
+  const outputTokens = numOrZero(usage?.output_tokens);
+  const cacheCreationInputTokens = numOrZero(usage?.cache_creation_input_tokens);
+  const cacheReadInputTokens = numOrZero(usage?.cache_read_input_tokens);
+
+  // postgres-js + drizzle's raw sql`` doesn't auto-convert Date to timestamptz
+  // via parameter binding — pre-serialize and cast in SQL.
+  const hookTsIso = ev.hookTs.toISOString();
+
   await db
     .update(schema.sessions)
     .set({
       endedAt: ev.hookTs,
       status: "completed",
       ...(summary !== null ? { summary } : {}),
-      durationSeconds: sql`GREATEST(0, EXTRACT(EPOCH FROM (${ev.hookTs}::timestamptz - started_at))::int)`,
+      durationSeconds: sql`GREATEST(0, EXTRACT(EPOCH FROM (${hookTsIso}::timestamptz - started_at))::int)`,
+      // Token columns are accumulators across the session — for session.end we
+      // overwrite (single emission per session). If the hook later supports
+      // mid-session token reports, switch to GREATEST(existing, incoming).
+      ...(inputTokens || outputTokens || cacheCreationInputTokens || cacheReadInputTokens
+        ? {
+            inputTokens,
+            outputTokens,
+            cacheCreationInputTokens,
+            cacheReadInputTokens,
+          }
+        : {}),
     })
     .where(eq(schema.sessions.id, ev.sessionId));
 }
@@ -245,6 +271,11 @@ function strOrNull(v: unknown): string | null {
 function numOrNull(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   return null;
+}
+
+function numOrZero(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) return Math.floor(v);
+  return 0;
 }
 
 function jsonStringOrNull(v: unknown): string | null {
