@@ -123,6 +123,98 @@ audit.get("/audit/file", async (c) => {
   return c.json({ path, events });
 });
 
+// Recurring blocker clusters per CAPTURE-LAYER §7. Two blockers from
+// different sessions whose content trigram-similarity ≥ 0.4 form a
+// cluster. Useful manager view: "this team has hit `<topic>` 3 times
+// in 30 days — pattern?"
+audit.get("/audit/recurring-blockers", async (c) => {
+  const session = c.get("session");
+  const r = (await db.execute<{
+    id1: string;
+    id2: string;
+    sim: string;
+    title1: string | null;
+    title2: string | null;
+    content1: string;
+    member1: string;
+    member2: string;
+    project1: string;
+    created1: string;
+    created2: string;
+  }>(sql`
+    -- Self-join blockers in last 30 days, similarity >= 0.4 across DIFFERENT sessions.
+    SELECT a.id AS id1, b.id AS id2,
+           similarity(a.content, b.content)::text AS sim,
+           a.title AS title1, b.title AS title2,
+           a.content AS content1,
+           m1.name AS member1, m2.name AS member2,
+           p.name AS project1,
+           a.created_at::text AS created1,
+           b.created_at::text AS created2
+      FROM insights a
+      JOIN insights b
+        ON b.id > a.id
+       AND b.org_id = a.org_id
+       AND b.type = 'blocker'
+       AND b.created_at > NOW() - INTERVAL '30 days'
+       AND b.session_id IS DISTINCT FROM a.session_id
+      JOIN members m1 ON m1.id = a.member_id
+      JOIN members m2 ON m2.id = b.member_id
+      JOIN projects p ON p.id = a.project_id
+     WHERE a.org_id = ${session.org_id}
+       AND a.type = 'blocker'
+       AND a.created_at > NOW() - INTERVAL '30 days'
+       AND similarity(a.content, b.content) >= 0.4
+     ORDER BY similarity(a.content, b.content) DESC
+     LIMIT 50
+  `)) as unknown as Array<{
+    id1: string; id2: string; sim: string;
+    title1: string | null; title2: string | null; content1: string;
+    member1: string; member2: string; project1: string;
+    created1: string; created2: string;
+  }>;
+  return c.json({
+    pairs: r.map((row) => ({
+      similarity: parseFloat(row.sim),
+      a: { id: row.id1, title: row.title1, content: row.content1, member: row.member1, created_at: row.created1 },
+      b: { id: row.id2, title: row.title2, member: row.member2, created_at: row.created2 },
+      project: row.project1,
+    })),
+  });
+});
+
+// Decision velocity per project — decisions/week for last 12 weeks.
+// Useful as a momentum proxy. Per CAPTURE-LAYER §7.
+audit.get("/audit/decision-velocity", async (c) => {
+  const session = c.get("session");
+  const projectId = c.req.query("project");
+  const weeks = Math.min(parseInt(c.req.query("weeks") ?? "12", 10), 26);
+
+  const r = (await db.execute<{ wk: string; n: string }>(sql`
+    WITH window_weeks AS (
+      SELECT generate_series(
+        date_trunc('week', NOW()) - (${weeks - 1}::int) * INTERVAL '1 week',
+        date_trunc('week', NOW()),
+        INTERVAL '1 week'
+      ) AS wk
+    )
+    SELECT to_char(window_weeks.wk, 'YYYY-MM-DD') AS wk,
+           COUNT(i.id)::text AS n
+      FROM window_weeks
+      LEFT JOIN insights i
+        ON i.org_id = ${session.org_id}
+       AND i.type = 'decision'
+       AND date_trunc('week', i.created_at) = window_weeks.wk
+       ${projectId ? sql`AND i.project_id = ${projectId}` : sql``}
+     GROUP BY window_weeks.wk
+     ORDER BY window_weeks.wk ASC
+  `)) as unknown as Array<{ wk: string; n: string }>;
+
+  return c.json({
+    weeks: r.map((row) => ({ week_start: row.wk, decisions: parseInt(row.n, 10) })),
+  });
+});
+
 audit.get("/audit/failures", async (c) => {
   const session = c.get("session");
   const limit = Math.min(parseInt(c.req.query("limit") ?? "200", 10), 500);

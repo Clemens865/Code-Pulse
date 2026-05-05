@@ -1,16 +1,24 @@
 // GET /v1/sessions/:id — full forensic view of a single Claude Code session.
 // Derived from event_log directly (the rollup table `sessions` isn't written
 // to by ingestion yet — see PRD §14, derived workers are deferred).
+//
+// POST /v1/sessions/:id/suggest-patterns — Sprint 8. Calls Claude to extract
+// reusable patterns. Feature-flagged on ANTHROPIC_API_KEY.
 
 import { Hono } from "hono";
 import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { dashboardAuth } from "../auth/session.js";
+import { workstationAuth } from "../auth/workstation.js";
 import { problem } from "../lib/errors.js";
+import { suggestPatternsForSession } from "../lib/patterns.js";
+import { env } from "../env.js";
 
 export const sessionsRoute = new Hono();
 
 sessionsRoute.use("/sessions/:id", dashboardAuth);
+// suggest-patterns is workstation-auth (the hook calls it post-Stop).
+sessionsRoute.use("/sessions/:id/suggest-patterns", workstationAuth);
 
 sessionsRoute.get("/sessions/:id", async (c) => {
   const session = c.get("session");
@@ -134,3 +142,26 @@ function countLines(s: string): number {
   for (const ch of s) if (ch === "\n") n++;
   return n;
 }
+
+// POST /v1/sessions/:id/suggest-patterns — Sprint 8.
+// Hook calls this post-Stop. No-op (returns []) when ANTHROPIC_API_KEY is unset.
+sessionsRoute.post("/sessions/:id/suggest-patterns", async (c) => {
+  const auth = c.get("auth");
+  const id = c.req.param("id");
+  if (!id) return problem(c, 400, "schema_validation_failed", "Missing session id");
+
+  // Tenancy guard: session must belong to caller's org. Even when the LLM
+  // path is disabled, this check keeps cross-org probing impossible.
+  const owns = await db.query.sessions.findFirst({
+    where: (s, { and, eq }) => and(eq(s.id, id), eq(s.orgId, auth.orgId)),
+    columns: { id: true },
+  });
+  if (!owns) return problem(c, 404, "not_found", "Session not found");
+
+  const enabled = !!env.ANTHROPIC_API_KEY;
+  if (!enabled) {
+    return c.json({ suggestions: [], enabled: false });
+  }
+  const suggestions = await suggestPatternsForSession(id);
+  return c.json({ suggestions, enabled: true });
+});

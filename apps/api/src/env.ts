@@ -12,6 +12,10 @@ const schema = z.object({
     .default("http://localhost:3142")
     .transform((s) => s.split(",").map((o) => o.trim()).filter(Boolean)),
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
+  // Optional: enables pattern auto-suggest at Stop time (Sprint 8). When unset,
+  // the suggestion endpoint returns empty — feature flag, not failure.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default("claude-haiku-4-5-20251001"),
 });
 
 const parsed = schema.safeParse(process.env);

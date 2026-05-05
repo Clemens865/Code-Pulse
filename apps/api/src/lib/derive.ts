@@ -6,6 +6,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { resolveOpenBlocker } from "./resolution.js";
+import { scoreInsight } from "./quality.js";
 
 export type DerivableEvent = {
   id: string;
@@ -178,6 +179,7 @@ async function deriveInsight(ev: DerivableEvent) {
   }
   const reasoning = strOrNull(p.reasoning) ?? strOrNull(p.why) ?? null;
 
+  const qualityScore = scoreInsight({ content, reasoning });
   await db
     .insert(schema.insights)
     .values({
@@ -193,6 +195,11 @@ async function deriveInsight(ev: DerivableEvent) {
       createdAt: ev.hookTs,
     })
     .onConflictDoNothing({ target: schema.insights.id });
+  // quality_score isn't in the Drizzle insights schema yet — write via raw SQL.
+  await db.execute(sql`
+    UPDATE insights SET quality_score = ${qualityScore.toFixed(2)}
+     WHERE id = ${ev.id} AND quality_score = 0.50
+  `);
 
   // If the payload claims this insight resolves a previously-flagged blocker,
   // trigram-match it against the project's open blockers and stamp resolved_at.
