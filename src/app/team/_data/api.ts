@@ -138,6 +138,38 @@ export const api = {
   reportsWeekly: () => get<ApiWeeklyReport>("/v1/reports/weekly"),
   reportsOverview: (range: "24h" | "7d" | "30d" | "90d" = "7d") =>
     get<ApiOverviewReport>(`/v1/reports/overview?range=${range}`),
+  auditFiles: (q: string, limit = 20) =>
+    get<{ files: Array<{ file_path: string; edits: number; last_ts: string }> }>(
+      `/v1/audit/files?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
+  auditFile: (path: string, limit = 200) =>
+    get<{
+      path: string;
+      events: Array<{
+        id: string;
+        ts: string;
+        tool_name: string;
+        member: { id: string; name: string | null };
+        project: { id: string; name: string };
+        session_id: string;
+        lines_added: number;
+        lines_removed: number;
+        command: string | null;
+        command_failed: boolean;
+      }>;
+    }>(`/v1/audit/file?path=${encodeURIComponent(path)}&limit=${limit}`),
+  auditFileCsvUrl: (path: string) => `${API_URL}/v1/audit/file?path=${encodeURIComponent(path)}&format=csv`,
+  auditFailures: (limit = 200) =>
+    get<{
+      events: Array<{
+        id: string;
+        ts: string;
+        member: { id: string; name: string | null };
+        project: { id: string; name: string };
+        session_id: string;
+        command: string | null;
+      }>;
+    }>(`/v1/audit/failures?limit=${limit}`),
   session: (id: string) => get<ApiSessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   // Admin
   inviteMember: (email: string, name: string | undefined, role: ApiRole) =>

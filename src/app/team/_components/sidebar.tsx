@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { id: "members", href: "/team/members", label: "Members", icon: I.members,  },
   { id: "insights", href: "/team/insights", label: "Insights", icon: I.insights },
   { id: "reports", href: "/team/reports", label: "Reports", icon: I.reports },
+  { id: "audit", href: "/team/audit", label: "Audit", icon: I.flag },
 ];
 
 const adminItems: Array<{ id: string; href: string; label: string }> = [
