@@ -22,7 +22,10 @@ export async function sync(opts = {}) {
             project: { remote_url: row.remote_url ?? "" },
             client: safeJson(row.client_meta) ?? {},
             hook_ts: row.hook_ts,
-            payload: safeJson(row.payload) ?? {},
+            // Server expects payload to be an object. The bash hook sometimes stores
+            // a JSON-encoded primitive (e.g. last_assistant_message is a string for
+            // Stop events). Normalize: wrap non-object values under a `value` key.
+            payload: normalizePayload(safeJson(row.payload)),
         }));
         const res = await client.ingest(events);
         if (res.status === 0) {
@@ -81,5 +84,13 @@ function safeJson(s) {
     catch {
         return null;
     }
+}
+function normalizePayload(v) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+        return v;
+    }
+    if (v === null || v === undefined)
+        return {};
+    return { value: v };
 }
 //# sourceMappingURL=sync.js.map
