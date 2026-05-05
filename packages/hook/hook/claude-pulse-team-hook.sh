@@ -87,9 +87,10 @@ EVENT_KIND="$(api_event_kind "$HOOK_TYPE")"
 if [ -n "$EVENT_KIND" ] && [ -f "$TEAM_CONFIG" ]; then
     mkdir -p "$TEAM_DIR" 2>/dev/null || true
 
-    # Init outbox schema once.
+    # Init outbox schema once. Redirect stdout too — PRAGMA journal_mode echoes
+    # "wal" which would otherwise leak into the hook's JSON output.
     if [ ! -f "$TEAM_OUTBOX" ]; then
-        sqlite3 "$TEAM_OUTBOX" <<'SCHEMA' 2>/dev/null || true
+        sqlite3 "$TEAM_OUTBOX" <<'SCHEMA' >/dev/null 2>&1 || true
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS outbox (
     id           TEXT PRIMARY KEY,                     -- UUIDv4
@@ -216,6 +217,45 @@ if [ -n "${SESSION_ID:-}" ] && [ -f "$SOLO_DIR/tracker.db" ] && [ -f "$TEAM_CONF
     fi
 fi
 
-# ───────────── 6. Pass through whatever the solo hook output ─────────────
+# ───────────── 6. On SessionStart, fetch team context and merge with OG output ─────────────
+# This is the moat — every Claude session opens with the project's open
+# blockers / key decisions / hot files / patterns injected as system context.
+# Latency budget: <500 ms p99 (curl --max-time 1 is the hard cap).
+TEAM_CTX=""
+if [ "$HOOK_TYPE" = "SessionStart" ] && [ -n "${REMOTE_URL:-}" ] && [ -f "$TEAM_CONFIG" ]; then
+    API_URL="$(jq -r '.api_url // empty' "$TEAM_CONFIG" 2>/dev/null)"
+    API_KEY="$(jq -r '.api_key // empty' "$TEAM_CONFIG" 2>/dev/null)"
+    if [ -n "$API_URL" ] && [ -n "$API_KEY" ]; then
+        TEAM_CTX="$(curl -fsS --max-time 1 \
+            -H "Authorization: Bearer $API_KEY" \
+            --get --data-urlencode "remote_url=$REMOTE_URL" --data-urlencode "format=text" \
+            "$API_URL/v1/context" 2>/dev/null || true)"
+    fi
+fi
+
+# Extract OG's additionalContext (if it produced any) so we can merge cleanly.
+OG_CTX=""
+if [ -n "$SOLO_OUT" ]; then
+    OG_CTX="$(printf '%s' "$SOLO_OUT" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null || true)"
+fi
+
+# If we have either source, emit a combined hookSpecificOutput JSON. Team
+# context goes after OG's so the team block is the most-recent thing the
+# AI reads (most-recent context tends to weight higher).
+if [ -n "$OG_CTX" ] || [ -n "$TEAM_CTX" ]; then
+    COMBINED="$OG_CTX"
+    if [ -n "$TEAM_CTX" ]; then
+        if [ -n "$COMBINED" ]; then
+            COMBINED="$COMBINED"$'\n\n'"$TEAM_CTX"
+        else
+            COMBINED="$TEAM_CTX"
+        fi
+    fi
+    printf '%s' "$(jq -nc --arg ctx "$COMBINED" '{hookSpecificOutput: {additionalContext: $ctx}}' 2>/dev/null)"
+    exit 0
+fi
+
+# Otherwise, pass through whatever OG output verbatim (e.g. for non-JSON
+# fallbacks, or for non-SessionStart hooks where OG might still write).
 [ -n "$SOLO_OUT" ] && printf '%s' "$SOLO_OUT"
 exit 0
