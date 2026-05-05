@@ -45,15 +45,53 @@ if [ -x "$SOLO_HOOK" ]; then
 fi
 
 # ───────────── 2. Resolve git remote URL for project identity ─────────────
+# Resolution order (first non-empty wins):
+#   1. CLAUDE_PULSE_REMOTE_URL env var          — explicit override (e.g. ruflow
+#                                                 sets this when spawning sub-agents)
+#   2. .claude-pulse-team.json walked up from   — project-pinned config file
+#      cwd (looks for { "remote_url": "..." })   in the repo root
+#   3. git config --get remote.origin.url       — from cwd, then OLDPWD
+#   4. Cloud env vars (GitHub Codespaces / GitLab CI / Azure Pipelines)
+#   5. local://<basename> synthetic              — last resort, fragments per dir
+
 REMOTE_URL=""
-if [ -n "${CWD:-}" ]; then
+
+# 1. Explicit env override.
+[ -n "${CLAUDE_PULSE_REMOTE_URL:-}" ] && REMOTE_URL="$CLAUDE_PULSE_REMOTE_URL"
+
+# 2. Walk up from cwd looking for .claude-pulse-team.json with a remote_url.
+if [ -z "$REMOTE_URL" ] && [ -n "${CWD:-}" ]; then
+    SCAN_DIR="$CWD"
+    for _ in 1 2 3 4 5 6 7 8; do
+        if [ -f "$SCAN_DIR/.claude-pulse-team.json" ]; then
+            CFG_URL="$(jq -r '.remote_url // empty' "$SCAN_DIR/.claude-pulse-team.json" 2>/dev/null || true)"
+            if [ -n "$CFG_URL" ]; then
+                REMOTE_URL="$CFG_URL"
+                break
+            fi
+        fi
+        PARENT="$(dirname "$SCAN_DIR")"
+        [ "$PARENT" = "$SCAN_DIR" ] && break
+        SCAN_DIR="$PARENT"
+    done
+fi
+
+# 3. git config from cwd, then from OLDPWD (parent shell's pwd, if exported).
+if [ -z "$REMOTE_URL" ] && [ -n "${CWD:-}" ]; then
     REMOTE_URL="$(cd "$CWD" 2>/dev/null && git config --get remote.origin.url 2>/dev/null || true)"
 fi
-# Cloud env fast-path: env vars often beat invoking git.
+if [ -z "$REMOTE_URL" ] && [ -n "${OLDPWD:-}" ]; then
+    REMOTE_URL="$(cd "$OLDPWD" 2>/dev/null && git config --get remote.origin.url 2>/dev/null || true)"
+fi
+
+# 4. Cloud env fast-path.
 [ -z "$REMOTE_URL" ] && [ -n "${GITHUB_REPOSITORY:-}" ]   && REMOTE_URL="https://github.com/${GITHUB_REPOSITORY}.git"
 [ -z "$REMOTE_URL" ] && [ -n "${CI_PROJECT_PATH:-}" ]     && REMOTE_URL="https://gitlab.com/${CI_PROJECT_PATH}.git"
 [ -z "$REMOTE_URL" ] && [ -n "${BUILD_REPOSITORY_URI:-}" ] && REMOTE_URL="${BUILD_REPOSITORY_URI}"
-# No remote → still try to record events; project resolution will need a manual bind.
+
+# 5. Last resort: synthetic local: key. Fragments per cwd basename — explicitly
+#    bind via env or .claude-pulse-team.json to avoid this when running tools
+#    that spawn agents in temp directories (ruflow, etc.).
 [ -z "$REMOTE_URL" ] && [ -n "${CWD:-}" ] && REMOTE_URL="local://$(basename "$CWD")"
 
 # ───────────── 3. Map Claude hook → API event_kind ─────────────
