@@ -250,6 +250,18 @@ export type ApiSessionDetail = {
     tools: number;
     bash_failures: number;
   };
+  stuck: {
+    score: number;
+    signals: {
+      bash_failures?: number;
+      repeated_searches?: number;
+      web_help_density?: number;
+      idle_minutes?: number;
+      no_progress_at_end?: boolean;
+      crashed?: boolean;
+    };
+    scored_at: string | null;
+  };
   events: Array<{
     id: string;
     kind: string;
@@ -270,6 +282,7 @@ export type ApiOverviewReport = {
     lines_removed7d: number;
     lines_net7d: number;
     active_members7d: number;
+    stuck_sessions: number;
   };
   daily_activity: Array<{ date: string; count: number }>;
   top_projects: Array<{

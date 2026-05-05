@@ -252,6 +252,9 @@ export const sessions = pgTable("sessions", {
   outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
   cacheCreationInputTokens: bigint("cache_creation_input_tokens", { mode: "number" }).notNull().default(0),
   cacheReadInputTokens: bigint("cache_read_input_tokens", { mode: "number" }).notNull().default(0),
+  stuckScore: text("stuck_score").notNull().default("0"),
+  stuckSignals: jsonb("stuck_signals").notNull().default({}),
+  stuckScoredAt: timestamp("stuck_scored_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -79,6 +79,7 @@ async function fetchOrgStats(orgId: string, intervalSql: string) {
     lines_added7d: string;
     lines_removed7d: string;
     active_members7d: string;
+    stuck_sessions: string;
   }>(sql`
     SELECT
       (SELECT COUNT(*)::text FROM sessions WHERE org_id = ${orgId} AND started_at > NOW() - ${interval}) AS sessions7d,
@@ -86,7 +87,8 @@ async function fetchOrgStats(orgId: string, intervalSql: string) {
       (SELECT COUNT(*)::text FROM insights WHERE org_id = ${orgId} AND type = 'blocker' AND resolved_at IS NULL) AS open_blockers,
       (SELECT COALESCE(SUM(lines_added), 0)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - ${interval}) AS lines_added7d,
       (SELECT COALESCE(SUM(lines_removed), 0)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - ${interval}) AS lines_removed7d,
-      (SELECT COUNT(DISTINCT member_id)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - ${interval}) AS active_members7d
+      (SELECT COUNT(DISTINCT member_id)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - ${interval}) AS active_members7d,
+      (SELECT COUNT(*)::text FROM sessions WHERE org_id = ${orgId} AND started_at > NOW() - ${interval} AND stuck_score >= 0.6) AS stuck_sessions
   `)) as unknown as Array<{
     sessions7d: string;
     decisions7d: string;
@@ -94,10 +96,11 @@ async function fetchOrgStats(orgId: string, intervalSql: string) {
     lines_added7d: string;
     lines_removed7d: string;
     active_members7d: string;
+    stuck_sessions: string;
   }>;
   const row = r[0] ?? {
     sessions7d: "0", decisions7d: "0", open_blockers: "0",
-    lines_added7d: "0", lines_removed7d: "0", active_members7d: "0",
+    lines_added7d: "0", lines_removed7d: "0", active_members7d: "0", stuck_sessions: "0",
   };
   const linesAdded = parseInt(row.lines_added7d, 10);
   const linesRemoved = parseInt(row.lines_removed7d, 10);
@@ -109,6 +112,7 @@ async function fetchOrgStats(orgId: string, intervalSql: string) {
     lines_removed7d: linesRemoved,
     lines_net7d: linesAdded - linesRemoved,
     active_members7d: parseInt(row.active_members7d, 10),
+    stuck_sessions: parseInt(row.stuck_sessions, 10),
   };
 }
 

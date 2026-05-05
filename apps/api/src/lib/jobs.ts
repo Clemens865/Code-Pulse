@@ -5,6 +5,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
+import { scorePendingSessions } from "./stuck.js";
 
 /**
  * Mark sessions as crashed when:
@@ -56,6 +57,11 @@ export function startBackgroundJobs(intervalMs: number = 30 * 60 * 1000): void {
       await reclaimCrashedSessions();
     } catch (err) {
       console.error("[jobs] reclaimCrashedSessions failed:", err);
+    }
+    try {
+      await scorePendingSessions();
+    } catch (err) {
+      console.error("[jobs] scorePendingSessions failed:", err);
     }
   };
 

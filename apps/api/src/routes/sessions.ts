@@ -81,6 +81,14 @@ sessionsRoute.get("/sessions/:id", async (c) => {
     columns: { id: true, name: true, email: true, role: true },
   });
 
+  // Stuck score (computed by the periodic job on lib/stuck.ts).
+  const stuckRow = await db.query.sessions.findFirst({
+    where: (s, { and, eq }) => and(eq(s.id, id), eq(s.orgId, session.org_id)),
+    columns: { stuckScore: true, stuckSignals: true, stuckScoredAt: true },
+  });
+  const stuckScore = stuckRow ? parseFloat(stuckRow.stuckScore) : 0;
+  const stuckSignals = (stuckRow?.stuckSignals ?? {}) as Record<string, unknown>;
+
   return c.json({
     session: {
       id,
@@ -102,6 +110,11 @@ sessionsRoute.get("/sessions/:id", async (c) => {
       files: files.size,
       tools: tools.size,
       bash_failures: bashFailures,
+    },
+    stuck: {
+      score: stuckScore,
+      signals: stuckSignals,
+      scored_at: stuckRow?.stuckScoredAt ?? null,
     },
     events: events.map((e) => ({
       id: e.id,

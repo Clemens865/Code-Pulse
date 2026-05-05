@@ -76,6 +76,7 @@ export default function OverviewPage() {
         linesRemoved: live.org.lines_removed7d,
         linesNet: live.org.lines_net7d,
         activeMembers: live.org.active_members7d,
+        stuckSessions: live.org.stuck_sessions,
       }
     : (() => {
         const s = orgStats7d(persona);
@@ -87,6 +88,7 @@ export default function OverviewPage() {
           linesRemoved: s.linesRemoved,
           linesNet: s.linesNet,
           activeMembers: s.activeMembers,
+          stuckSessions: 0,
         };
       })();
 
@@ -152,6 +154,7 @@ export default function OverviewPage() {
     { label: "Decisions", v: stats.decisions.toLocaleString(), sub: RANGE_SUB[range], spark: [1, 2, 1, 3, 2, 3, 4, 3, 4, 3, 5, 4] },
     { label: "Blockers", v: stats.blockers.toLocaleString(), sub: stats.blockers > 0 ? "open" : "—", spark: [1, 1, 2, 1, 2, 2, 1, 3, 2, 2, 1, 2], hue: 28 },
     { label: "Lines net", v: signed(stats.linesNet), sub: `+${k(stats.linesAdded)} / −${k(stats.linesRemoved)}`, spark: spark(orgSeries.slice(-12).map((d) => d.count * 30)) },
+    { label: "Stuck sessions", v: stats.stuckSessions.toLocaleString(), sub: `${RANGE_SUB[range]} · score ≥ 0.6`, spark: [0, 1, 0, 2, 1, 2, 1, 3, 2, 1, 2, 3], hue: 28 },
     { label: "Members", v: `${stats.activeMembers}`, sub: RANGE_SUB[range], spark: [3, 4, 3, 4, 5, 4, 5, 5, 6, 5, 6, 6] },
   ];
 
@@ -215,7 +218,7 @@ export default function OverviewPage() {
           overflow: "auto",
           padding: 24,
           display: "grid",
-          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateColumns: "repeat(6, 1fr)",
           gap: 12,
           gridAutoRows: "min-content",
         }}
