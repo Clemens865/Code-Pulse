@@ -155,6 +155,67 @@ SCHEMA
     fi
 fi
 
-# ───────────── 5. Pass through whatever the solo hook output ─────────────
+# ───────────── 5. On Stop, mirror OG-parsed insights into the team outbox ─────────────
+# OG's hook prompts Claude with a PROGRESS/DECISION/BLOCKED format and parses
+# the response into its own SQLite (~/.claude-pulse/tracker.db). We reuse that
+# work — read the just-inserted insights for this session and emit them as
+# insight.* events so the team API derivation pipeline picks them up.
+#
+# Idempotent: deterministic UUIDv5(og-insight:<id>) means re-running the hook
+# never duplicates events. INSERT OR IGNORE in the outbox catches any escapes.
+if [ -n "${SESSION_ID:-}" ] && [ -f "$SOLO_DIR/tracker.db" ] && [ -f "$TEAM_CONFIG" ] \
+   && { [ "$HOOK_TYPE" = "Stop" ] || [ "$HOOK_TYPE" = "StopFailure" ]; }; then
+
+    # Pull the most-recent insights for this session out of OG's tracker.
+    # Limit guards against runaway emission if a session somehow accumulated thousands.
+    OG_INSIGHTS="$(sqlite3 -separator $'\x1f' "$SOLO_DIR/tracker.db" \
+        "SELECT id, type, content FROM insights WHERE session_id = '$(sql_escape "$SESSION_ID")' ORDER BY id DESC LIMIT 50;" \
+        2>/dev/null || true)"
+
+    if [ -n "$OG_INSIGHTS" ]; then
+        while IFS=$'\x1f' read -r OG_ID OG_TYPE OG_CONTENT; do
+            [ -z "$OG_ID" ] && continue
+            [ -z "$OG_TYPE" ] && continue
+
+            # Map OG enum → schema enum.
+            NEW_TYPE="$OG_TYPE"
+            [ "$OG_TYPE" = "blocked" ] && NEW_TYPE="blocker"
+
+            # Skip types not in the schema enum (defensive — OG schema has the same set).
+            case "$NEW_TYPE" in
+                progress|decision|blocker|pattern|fix|context) ;;
+                *) continue ;;
+            esac
+
+            INSIGHT_KIND="insight.$NEW_TYPE"
+
+            # Deterministic v5 UUID so re-emission of the same OG row collapses.
+            INSIGHT_EVENT_ID="$(python3 -c "import uuid; print(uuid.uuid5(uuid.NAMESPACE_URL, 'og-insight:$OG_ID'))" 2>/dev/null \
+                || node -e "const c=require('crypto');const h=c.createHash('sha1').update('6ba7b8109dad11d180b400c04fd430c8','hex' in c?'hex':undefined);h.update('og-insight:$OG_ID');const x=h.digest('hex');console.log(x.slice(0,8)+'-'+x.slice(8,12)+'-5'+x.slice(13,16)+'-8'+x.slice(17,20)+'-'+x.slice(20,32));" 2>/dev/null \
+                || echo "")"
+            [ -z "$INSIGHT_EVENT_ID" ] && continue
+
+            # Build payload: first 80 chars of first line → title; full content → content.
+            INSIGHT_PAYLOAD="$(jq -nc \
+                --arg c "$OG_CONTENT" \
+                '{title: ($c | split("\n")[0] | .[0:80]), content: $c}' \
+                2>/dev/null || echo '{}')"
+
+            INSIGHT_TS="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+            sqlite3 "$TEAM_OUTBOX" "INSERT OR IGNORE INTO outbox (id, event_kind, session_id, remote_url, hook_ts, client_meta, payload) VALUES (
+                '$(sql_escape "$INSIGHT_EVENT_ID")',
+                '$(sql_escape "$INSIGHT_KIND")',
+                '$(sql_escape "$SESSION_ID")',
+                '$(sql_escape "$REMOTE_URL")',
+                '$(sql_escape "$INSIGHT_TS")',
+                '$(sql_escape "$CLIENT_META")',
+                '$(sql_escape "$INSIGHT_PAYLOAD")'
+            );" 2>/dev/null || true
+        done <<< "$OG_INSIGHTS"
+    fi
+fi
+
+# ───────────── 6. Pass through whatever the solo hook output ─────────────
 [ -n "$SOLO_OUT" ] && printf '%s' "$SOLO_OUT"
 exit 0
