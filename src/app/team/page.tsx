@@ -25,9 +25,25 @@ const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactEle
   progress: ["ok", () => <I.progress />, "Progress"],
 };
 
+type Range = "24h" | "7d" | "30d" | "90d";
+const RANGES: Range[] = ["24h", "7d", "30d", "90d"];
+const RANGE_LABEL: Record<Range, string> = {
+  "24h": "24h",
+  "7d": "7d",
+  "30d": "30d",
+  "90d": "90d",
+};
+const RANGE_SUB: Record<Range, string> = {
+  "24h": "trailing 24h",
+  "7d": "trailing 7d",
+  "30d": "trailing 30d",
+  "90d": "trailing 90d",
+};
+
 export default function OverviewPage() {
   const { openPalette, persona, insights, source } = useShell();
   const [live, setLive] = useState<ApiOverviewReport | null>(null);
+  const [range, setRange] = useState<Range>("7d");
 
   useEffect(() => {
     if (source !== "live") {
@@ -36,7 +52,7 @@ export default function OverviewPage() {
     }
     let cancelled = false;
     api
-      .reportsOverview()
+      .reportsOverview(range)
       .then((r) => {
         if (!cancelled) setLive(r);
       })
@@ -46,7 +62,7 @@ export default function OverviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [source]);
+  }, [source, range]);
 
   const needsReview = persona.projects.filter((p) => p.needsReview);
 
@@ -132,11 +148,11 @@ export default function OverviewPage() {
   const recentInsights = insights.slice(0, 6);
 
   const kpis: Array<{ label: string; v: string; sub: string; spark: number[]; hue?: number }> = [
-    { label: "Sessions", v: stats.sessions.toLocaleString(), sub: "trailing 7d", spark: spark(orgSeries.slice(-12).map((d) => d.count)) },
-    { label: "Decisions", v: stats.decisions.toLocaleString(), sub: "logged", spark: [1, 2, 1, 3, 2, 3, 4, 3, 4, 3, 5, 4] },
+    { label: "Sessions", v: stats.sessions.toLocaleString(), sub: RANGE_SUB[range], spark: spark(orgSeries.slice(-12).map((d) => d.count)) },
+    { label: "Decisions", v: stats.decisions.toLocaleString(), sub: RANGE_SUB[range], spark: [1, 2, 1, 3, 2, 3, 4, 3, 4, 3, 5, 4] },
     { label: "Blockers", v: stats.blockers.toLocaleString(), sub: stats.blockers > 0 ? "open" : "—", spark: [1, 1, 2, 1, 2, 2, 1, 3, 2, 2, 1, 2], hue: 28 },
     { label: "Lines net", v: signed(stats.linesNet), sub: `+${k(stats.linesAdded)} / −${k(stats.linesRemoved)}`, spark: spark(orgSeries.slice(-12).map((d) => d.count * 30)) },
-    { label: "Members", v: `${stats.activeMembers}`, sub: "active", spark: [3, 4, 3, 4, 5, 4, 5, 5, 6, 5, 6, 6] },
+    { label: "Members", v: `${stats.activeMembers}`, sub: RANGE_SUB[range], spark: [3, 4, 3, 4, 5, 4, 5, 5, 6, 5, 6, 6] },
   ];
 
   return (
@@ -148,6 +164,43 @@ export default function OverviewPage() {
             {persona.org.name}
           </h1>
           <span style={{ fontSize: 12, color: "var(--fg-faint)" }}>{persona.org.plan}</span>
+          <div
+            role="tablist"
+            aria-label="Time range"
+            style={{
+              display: "inline-flex",
+              marginLeft: 8,
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              overflow: "hidden",
+            }}
+          >
+            {RANGES.map((r, i) => {
+              const active = r === range;
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setRange(r)}
+                  style={{
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    fontFamily: "inherit",
+                    background: active ? "var(--bg-active)" : "transparent",
+                    color: active ? "var(--fg-strong)" : "var(--fg-muted)",
+                    fontWeight: active ? 500 : 400,
+                    border: "none",
+                    borderLeft: i === 0 ? "none" : "1px solid var(--border)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {RANGE_LABEL[r]}
+                </button>
+              );
+            })}
+          </div>
           <span style={{ flex: 1 }} />
           <Btn kind="ghost" icon={<I.download />}>Export</Btn>
           <Link href="/team/reports" style={{ textDecoration: "none" }}>

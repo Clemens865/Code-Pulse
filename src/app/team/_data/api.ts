@@ -124,7 +124,8 @@ export const api = {
     }>(`/v1/insights${qs ? `?${qs}` : ""}`);
   },
   reportsWeekly: () => get<ApiWeeklyReport>("/v1/reports/weekly"),
-  reportsOverview: () => get<ApiOverviewReport>("/v1/reports/overview"),
+  reportsOverview: (range: "24h" | "7d" | "30d" | "90d" = "7d") =>
+    get<ApiOverviewReport>(`/v1/reports/overview?range=${range}`),
   session: (id: string) => get<ApiSessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   // Admin
   inviteMember: (email: string, name: string | undefined, role: ApiRole) =>

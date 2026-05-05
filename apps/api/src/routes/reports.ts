@@ -36,19 +36,32 @@ function compactNumber(n: number): string {
 // New focused endpoint for the Overview page. Returns everything the page
 // needs in one round-trip so we can stop falling back to synthetic
 // per-project series in the dashboard.
+//
+// ?range=24h|7d|30d|90d shapes the KPI window (heatmap is always 91 days
+// regardless of range — it's a visual baseline, not a metric).
+const RANGE_TO_SQL: Record<string, string> = {
+  "24h": "1 day",
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+};
+
 reports.get("/reports/overview", async (c) => {
   const session = c.get("session");
   const orgId = session.org_id;
+  const rangeParam = c.req.query("range") ?? "7d";
+  const intervalSql = RANGE_TO_SQL[rangeParam] ?? RANGE_TO_SQL["7d"]!;
 
   const [orgStats, dailyActivity, topProjects, topContributors] = await Promise.all([
-    fetchOrgStats7d(orgId),
+    fetchOrgStats(orgId, intervalSql),
     fetchDailyActivity(orgId, 91),
-    fetchTopProjects(orgId, 5),
-    fetchTopContributors(orgId, 5),
+    fetchTopProjects(orgId, 5, intervalSql),
+    fetchTopContributors(orgId, 5, intervalSql),
   ]);
 
   return c.json({
     generated_at: new Date().toISOString(),
+    range: rangeParam,
     org: orgStats,
     daily_activity: dailyActivity,
     top_projects: topProjects,
@@ -56,7 +69,9 @@ reports.get("/reports/overview", async (c) => {
   });
 });
 
-async function fetchOrgStats7d(orgId: string) {
+async function fetchOrgStats(orgId: string, intervalSql: string) {
+  // intervalSql is whitelisted (RANGE_TO_SQL) — safe to inline.
+  const interval = sql.raw(`INTERVAL '${intervalSql}'`);
   const r = (await db.execute<{
     sessions7d: string;
     decisions7d: string;
@@ -66,12 +81,12 @@ async function fetchOrgStats7d(orgId: string) {
     active_members7d: string;
   }>(sql`
     SELECT
-      (SELECT COUNT(*)::text FROM sessions WHERE org_id = ${orgId} AND started_at > NOW() - INTERVAL '7 days') AS sessions7d,
-      (SELECT COUNT(*)::text FROM insights WHERE org_id = ${orgId} AND type = 'decision' AND created_at > NOW() - INTERVAL '7 days') AS decisions7d,
+      (SELECT COUNT(*)::text FROM sessions WHERE org_id = ${orgId} AND started_at > NOW() - ${interval}) AS sessions7d,
+      (SELECT COUNT(*)::text FROM insights WHERE org_id = ${orgId} AND type = 'decision' AND created_at > NOW() - ${interval}) AS decisions7d,
       (SELECT COUNT(*)::text FROM insights WHERE org_id = ${orgId} AND type = 'blocker' AND resolved_at IS NULL) AS open_blockers,
-      (SELECT COALESCE(SUM(lines_added), 0)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - INTERVAL '7 days') AS lines_added7d,
-      (SELECT COALESCE(SUM(lines_removed), 0)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - INTERVAL '7 days') AS lines_removed7d,
-      (SELECT COUNT(DISTINCT member_id)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - INTERVAL '7 days') AS active_members7d
+      (SELECT COALESCE(SUM(lines_added), 0)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - ${interval}) AS lines_added7d,
+      (SELECT COALESCE(SUM(lines_removed), 0)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - ${interval}) AS lines_removed7d,
+      (SELECT COUNT(DISTINCT member_id)::text FROM tool_events WHERE org_id = ${orgId} AND ts > NOW() - ${interval}) AS active_members7d
   `)) as unknown as Array<{
     sessions7d: string;
     decisions7d: string;
@@ -118,7 +133,8 @@ async function fetchDailyActivity(orgId: string, days: number) {
   return r.map((row) => ({ date: row.d, count: parseInt(row.n, 10) }));
 }
 
-async function fetchTopProjects(orgId: string, limit: number) {
+async function fetchTopProjects(orgId: string, limit: number, intervalSql: string) {
+  const interval = sql.raw(`INTERVAL '${intervalSql}'`);
   const r = (await db.execute<{
     id: string;
     name: string;
@@ -131,24 +147,24 @@ async function fetchTopProjects(orgId: string, limit: number) {
            p.name,
            (SELECT COUNT(*)::text FROM sessions s
              WHERE s.project_id = p.id
-               AND s.started_at > NOW() - INTERVAL '7 days') AS sessions7d,
+               AND s.started_at > NOW() - ${interval}) AS sessions7d,
            (SELECT COUNT(*)::text FROM insights i
              WHERE i.project_id = p.id
                AND i.type = 'blocker'
                AND i.resolved_at IS NULL) AS open_blockers,
            (SELECT COALESCE(SUM(lines_added), 0)::text FROM tool_events te
              WHERE te.project_id = p.id
-               AND te.ts > NOW() - INTERVAL '7 days') AS lines_added,
+               AND te.ts > NOW() - ${interval}) AS lines_added,
            (SELECT COALESCE(SUM(lines_removed), 0)::text FROM tool_events te
              WHERE te.project_id = p.id
-               AND te.ts > NOW() - INTERVAL '7 days') AS lines_removed
+               AND te.ts > NOW() - ${interval}) AS lines_removed
       FROM projects p
      WHERE p.org_id = ${orgId}
        AND p.status = 'active'
      ORDER BY (
        SELECT COUNT(*) FROM sessions s2
         WHERE s2.project_id = p.id
-          AND s2.started_at > NOW() - INTERVAL '7 days'
+          AND s2.started_at > NOW() - ${interval}
      ) DESC,
      p.name ASC
      LIMIT ${limit}
@@ -170,7 +186,8 @@ async function fetchTopProjects(orgId: string, limit: number) {
   }));
 }
 
-async function fetchTopContributors(orgId: string, limit: number) {
+async function fetchTopContributors(orgId: string, limit: number, intervalSql: string) {
+  const interval = sql.raw(`INTERVAL '${intervalSql}'`);
   const r = (await db.execute<{
     id: string;
     name: string | null;
@@ -183,20 +200,20 @@ async function fetchTopContributors(orgId: string, limit: number) {
     SELECT m.id, m.name, m.email, m.role::text AS role,
            (SELECT COUNT(*)::text FROM sessions s
              WHERE s.member_id = m.id
-               AND s.started_at > NOW() - INTERVAL '7 days') AS sessions7d,
+               AND s.started_at > NOW() - ${interval}) AS sessions7d,
            (SELECT COALESCE(SUM(lines_added), 0)::text FROM tool_events te
              WHERE te.member_id = m.id
-               AND te.ts > NOW() - INTERVAL '7 days') AS lines_added,
+               AND te.ts > NOW() - ${interval}) AS lines_added,
            (SELECT COALESCE(SUM(lines_removed), 0)::text FROM tool_events te
              WHERE te.member_id = m.id
-               AND te.ts > NOW() - INTERVAL '7 days') AS lines_removed
+               AND te.ts > NOW() - ${interval}) AS lines_removed
       FROM members m
      WHERE m.org_id = ${orgId}
        AND m.status IN ('active', 'stale')
      ORDER BY (
        SELECT COUNT(*) FROM sessions s2
         WHERE s2.member_id = m.id
-          AND s2.started_at > NOW() - INTERVAL '7 days'
+          AND s2.started_at > NOW() - ${interval}
      ) DESC,
      m.name ASC
      LIMIT ${limit}
