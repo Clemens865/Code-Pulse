@@ -2,24 +2,79 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState, useMemo } from "react";
 import { I } from "../_components/icons";
 import {
   AvatarStack,
   Badge,
   Btn,
-  Chip,
   Sparkline,
   cell,
 } from "../_components/primitives";
 import { Topbar } from "../_components/topbar";
 import { useShell } from "../_components/shell";
+import { FilterDropdown, FilterRangeChip } from "../_components/filter-dropdown";
 
 const sparkPattern = [3, 5, 4, 7, 9, 6, 11, 8, 12, 14, 11, 17];
+
+const STATUS_OPTIONS = [
+  { id: "active", label: "Active" },
+  { id: "needs_review", label: "Needs review" },
+];
+
+const REDACTION_OPTIONS = [
+  { id: "standard", label: "Standard" },
+  { id: "strict", label: "Strict" },
+];
+
+const ACTIVITY_OPTIONS: Array<{ id: "any" | "active7d" | "active30d" | "dormant"; label: string }> = [
+  { id: "any", label: "Any" },
+  { id: "active7d", label: "Active in last 7d" },
+  { id: "active30d", label: "Active in last 30d" },
+  { id: "dormant", label: "Dormant (>30d)" },
+];
+
+function activityWithinDays(lastActivity: string, days: number): boolean {
+  // lastActivity is OG-style relative ("2m" / "11h" / "1d" / "30d")
+  // We treat it as "≤ days" by parsing the unit + magnitude.
+  const m = /^(\d+)([smhd])$/.exec(lastActivity);
+  if (!m || !m[1] || !m[2]) return false;
+  const n = parseInt(m[1], 10);
+  const u = m[2];
+  const ageDays = u === "s" ? 0 : u === "m" ? 0 : u === "h" ? 0 : u === "d" ? n : 0;
+  return ageDays <= days;
+}
 
 export default function ProjectListPage() {
   const { openPalette, persona } = useShell();
   const router = useRouter();
-  const ps = persona.projects;
+
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [redactions, setRedactions] = useState<string[]>([]);
+  const [activity, setActivity] = useState<"any" | "active7d" | "active30d" | "dormant">("any");
+
+  const ps = useMemo(() => {
+    return persona.projects.filter((p) => {
+      if (statuses.length > 0) {
+        const matchesActive = statuses.includes("active") && !p.needsReview;
+        const matchesNeedsReview = statuses.includes("needs_review") && p.needsReview;
+        if (!matchesActive && !matchesNeedsReview) return false;
+      }
+      if (redactions.length > 0 && !redactions.includes(p.redaction)) return false;
+      if (activity === "active7d" && !activityWithinDays(p.lastActivity, 7)) return false;
+      if (activity === "active30d" && !activityWithinDays(p.lastActivity, 30)) return false;
+      if (activity === "dormant" && activityWithinDays(p.lastActivity, 30)) return false;
+      return true;
+    });
+  }, [persona.projects, statuses, redactions, activity]);
+
+  const needsReviewCount = persona.projects.filter((p) => p.needsReview).length;
+  const anyActive = statuses.length + redactions.length > 0 || activity !== "any";
+  const clearAll = () => {
+    setStatuses([]);
+    setRedactions([]);
+    setActivity("any");
+  };
 
   return (
     <>
@@ -29,9 +84,11 @@ export default function ProjectListPage() {
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em" }}>
             Projects
           </h1>
-          <Badge kind="warn" icon={<I.flag />}>
-            1 needs review
-          </Badge>
+          {needsReviewCount > 0 && (
+            <Badge kind="warn" icon={<I.flag />}>
+              {needsReviewCount} needs review
+            </Badge>
+          )}
           <span style={{ flex: 1 }} />
           <Btn kind="ghost" icon={<I.download />}>
             Export CSV
@@ -41,21 +98,52 @@ export default function ProjectListPage() {
           </Btn>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-          <Chip>
-            <I.filter /> Filters
-          </Chip>
-          <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
-          <Chip>
-            Status <I.chevron />
-          </Chip>
-          <Chip>
-            Redaction <I.chevron />
-          </Chip>
-          <Chip>
-            Activity <I.chevron />
-          </Chip>
+          {anyActive && (
+            <>
+              <button
+                type="button"
+                onClick={clearAll}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  background: "transparent",
+                  color: "var(--fg-muted)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                }}
+              >
+                <I.filter /> Clear filters
+              </button>
+              <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
+            </>
+          )}
+          <FilterDropdown
+            label="Status"
+            options={STATUS_OPTIONS}
+            selected={statuses}
+            onChange={setStatuses}
+          />
+          <FilterDropdown
+            label="Redaction"
+            options={REDACTION_OPTIONS}
+            selected={redactions}
+            onChange={setRedactions}
+          />
+          <FilterRangeChip
+            label="Activity"
+            options={ACTIVITY_OPTIONS}
+            value={activity}
+            onChange={setActivity}
+          />
           <span style={{ flex: 1 }} />
-          <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>{ps.length} projects</span>
+          <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
+            {ps.length} of {persona.projects.length} projects
+          </span>
         </div>
       </div>
 
