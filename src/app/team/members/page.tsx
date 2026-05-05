@@ -1,13 +1,51 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { I } from "../_components/icons";
-import { Avatar, Badge, Btn, Chip, cell } from "../_components/primitives";
+import { Avatar, Badge, Btn, cell } from "../_components/primitives";
 import { Topbar } from "../_components/topbar";
 import { useShell } from "../_components/shell";
+import { FilterDropdown } from "../_components/filter-dropdown";
+
+const ROLE_OPTIONS = [
+  { id: "Owner", label: "Owner" },
+  { id: "Lead", label: "Lead" },
+  { id: "Engineer", label: "Engineer" },
+  { id: "Designer", label: "Designer" },
+];
+
+const STATUS_OPTIONS = [
+  { id: "active", label: "Active" },
+  { id: "stale", label: "Stale" },
+  { id: "invited", label: "Invited" },
+];
 
 export default function MembersPage() {
   const { openPalette, persona } = useShell();
+  const [roles, setRoles] = useState<string[]>([]);
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [projects, setProjects] = useState<string[]>([]);
+
+  const filteredMembers = useMemo(() => {
+    return persona.members.filter((m) => {
+      if (roles.length > 0 && !roles.includes(m.role)) return false;
+      if (statuses.length > 0 && !statuses.includes(m.status)) return false;
+      if (projects.length > 0 && !m.projects.some((p) => projects.includes(p))) return false;
+      return true;
+    });
+  }, [persona.members, roles, statuses, projects]);
+
   const totalActive = persona.members.filter((m) => m.status === "active").length;
+  const projectOptions = useMemo(
+    () => persona.projects.map((p) => ({ id: p.id, label: p.name, hue: p.hue })),
+    [persona.projects],
+  );
+  const anyActive = roles.length + statuses.length + projects.length > 0;
+  const clearAll = () => {
+    setRoles([]);
+    setStatuses([]);
+    setProjects([]);
+  };
 
   return (
     <>
@@ -18,7 +56,7 @@ export default function MembersPage() {
             Members
           </h1>
           <span style={{ fontSize: 12.5, color: "var(--fg-muted)" }}>
-            {persona.members.length} total · {totalActive} active
+            {filteredMembers.length} of {persona.members.length} · {totalActive} active
           </span>
           <span style={{ flex: 1 }} />
           <Btn kind="ghost" icon={<I.download />}>
@@ -29,19 +67,33 @@ export default function MembersPage() {
           </Btn>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-          <Chip>
-            <I.filter /> Filters
-          </Chip>
-          <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
-          <Chip>
-            Role <I.chevron />
-          </Chip>
-          <Chip>
-            Status <I.chevron />
-          </Chip>
-          <Chip>
-            Project <I.chevron />
-          </Chip>
+          {anyActive && (
+            <>
+              <button
+                type="button"
+                onClick={clearAll}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  background: "transparent",
+                  color: "var(--fg-muted)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                }}
+              >
+                <I.filter /> Clear filters
+              </button>
+              <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
+            </>
+          )}
+          <FilterDropdown label="Role" options={ROLE_OPTIONS} selected={roles} onChange={setRoles} />
+          <FilterDropdown label="Status" options={STATUS_OPTIONS} selected={statuses} onChange={setStatuses} />
+          <FilterDropdown label="Project" options={projectOptions} selected={projects} onChange={setProjects} />
         </div>
       </div>
       <div style={{ flex: 1, overflow: "auto" }}>
@@ -68,7 +120,7 @@ export default function MembersPage() {
             </tr>
           </thead>
           <tbody>
-            {persona.members.map((m) => {
+            {filteredMembers.map((m) => {
               const projects = persona.projects.filter((p) => m.projects.includes(p.id));
               const sessions = Math.round(40 + (m.hue % 50));
               const keyOk = m.status === "active";
