@@ -2,7 +2,7 @@
 // Dashboard-side reads scoped to the session's org_id.
 
 import { Hono } from "hono";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { dashboardAuth } from "../auth/session.js";
 import { problem } from "../lib/errors.js";
@@ -12,10 +12,20 @@ export const projects = new Hono();
 projects.use("/projects", dashboardAuth);
 projects.use("/projects/*", dashboardAuth);
 
+// Project names matching this regex are auto-created from agent worktree
+// paths (ruflo / Claude Agent SDK pre-anchor-fix). Hidden by default; opt
+// in with ?include_agents=true.
+const AGENT_NAME_REGEX = "^agent-a[0-9a-f]+$";
+
 projects.get("/projects", async (c) => {
   const session = c.get("session");
+  const includeAgents = c.req.query("include_agents") === "true";
+
   const rows = await db.query.projects.findMany({
-    where: (p, { eq }) => eq(p.orgId, session.org_id),
+    where: (p, { and, eq }) =>
+      includeAgents
+        ? eq(p.orgId, session.org_id)
+        : and(eq(p.orgId, session.org_id), not(sql`${p.name} ~ ${AGENT_NAME_REGEX}`)),
     orderBy: (p) => [desc(p.updatedAt)],
     columns: {
       id: true,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { I } from "../_components/icons";
 import {
   AvatarStack,
@@ -14,6 +14,8 @@ import {
 import { Topbar } from "../_components/topbar";
 import { useShell } from "../_components/shell";
 import { FilterDropdown, FilterRangeChip } from "../_components/filter-dropdown";
+import { adaptApiProjects, api } from "../_data/api";
+import type { Project } from "../_data/sample";
 
 const sparkPattern = [3, 5, 4, 7, 9, 6, 11, 8, 12, 14, 11, 17];
 
@@ -52,9 +54,36 @@ export default function ProjectListPage() {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [redactions, setRedactions] = useState<string[]>([]);
   const [activity, setActivity] = useState<"any" | "active7d" | "active30d" | "dormant">("any");
+  const [showAgents, setShowAgents] = useState(false);
+  const [agentProjects, setAgentProjects] = useState<Project[] | null>(null);
+
+  // Fetch the full project list (including agent-*) lazily, only when the
+  // user toggles "Show agents" on. Cached after first fetch.
+  useEffect(() => {
+    if (!showAgents || agentProjects !== null) return;
+    let cancelled = false;
+    api
+      .projects({ includeAgents: true })
+      .then((r) => {
+        if (cancelled) return;
+        const all = adaptApiProjects(r.projects);
+        const known = new Set(persona.projects.map((p) => p.id));
+        setAgentProjects(all.filter((p) => !known.has(p.id)));
+      })
+      .catch(() => {
+        if (!cancelled) setAgentProjects([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showAgents, agentProjects, persona.projects]);
+
+  const projectsAll = useMemo<Project[]>(() => {
+    return showAgents && agentProjects ? [...persona.projects, ...agentProjects] : persona.projects;
+  }, [persona.projects, agentProjects, showAgents]);
 
   const ps = useMemo(() => {
-    return persona.projects.filter((p) => {
+    return projectsAll.filter((p) => {
       if (statuses.length > 0) {
         const matchesActive = statuses.includes("active") && !p.needsReview;
         const matchesNeedsReview = statuses.includes("needs_review") && p.needsReview;
@@ -66,14 +95,15 @@ export default function ProjectListPage() {
       if (activity === "dormant" && activityWithinDays(p.lastActivity, 30)) return false;
       return true;
     });
-  }, [persona.projects, statuses, redactions, activity]);
+  }, [projectsAll, statuses, redactions, activity]);
 
   const needsReviewCount = persona.projects.filter((p) => p.needsReview).length;
-  const anyActive = statuses.length + redactions.length > 0 || activity !== "any";
+  const anyActive = statuses.length + redactions.length > 0 || activity !== "any" || showAgents;
   const clearAll = () => {
     setStatuses([]);
     setRedactions([]);
     setActivity("any");
+    setShowAgents(false);
   };
 
   return (
@@ -140,9 +170,29 @@ export default function ProjectListPage() {
             value={activity}
             onChange={setActivity}
           />
+          <button
+            type="button"
+            onClick={() => setShowAgents((v) => !v)}
+            title="Auto-created from ruflo / Claude Agent SDK worktree paths"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 10px",
+              fontSize: 12,
+              fontFamily: "inherit",
+              background: showAgents ? "var(--accent-bg)" : "transparent",
+              color: showAgents ? "var(--accent)" : "var(--fg-muted)",
+              border: `1px solid ${showAgents ? "var(--accent)" : "var(--border)"}`,
+              borderRadius: 999,
+              cursor: "pointer",
+            }}
+          >
+            {showAgents ? "✓ " : ""}Show agent projects
+          </button>
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
-            {ps.length} of {persona.projects.length} projects
+            {ps.length} of {projectsAll.length} projects
           </span>
         </div>
       </div>

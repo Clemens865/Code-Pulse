@@ -86,7 +86,10 @@ export const api = {
   devList: () => get<{ orgs: DevListOrg[] }>("/v1/auth/dev-list"),
   logout: () => post<{ ok: boolean }>("/v1/auth/logout", {}),
   me: () => get<{ member: ApiMember; org: ApiOrg }>("/v1/auth/me"),
-  projects: () => get<{ projects: ApiProject[] }>("/v1/projects"),
+  projects: (opts: { includeAgents?: boolean } = {}) => {
+    const qs = opts.includeAgents ? "?include_agents=true" : "";
+    return get<{ projects: ApiProject[] }>(`/v1/projects${qs}`);
+  },
   project: (id: string) =>
     get<{
       project: { id: string; name: string; repo: string; redaction: string; needs_review: boolean };
@@ -362,7 +365,17 @@ export function adaptApiPersona(
     };
   });
 
-  const projects: Project[] = apiProjects.map((p, idx) => ({
+  const projects: Project[] = adaptApiProjects(apiProjects);
+
+  return {
+    org: { name: org.name, short: org.slug.toUpperCase().slice(0, 3), plan: org.plan, logo: org.name.slice(0, 1).toUpperCase() },
+    members,
+    projects,
+  };
+}
+
+export function adaptApiProjects(apiProjects: ApiProject[]): Project[] {
+  return apiProjects.map((p, idx) => ({
     id: p.id,
     name: p.name,
     repo: p.repo,
@@ -374,12 +387,6 @@ export function adaptApiPersona(
     needsReview: p.needs_review,
     hue: hueFromString(p.id, idx),
   }));
-
-  return {
-    org: { name: org.name, short: org.slug.toUpperCase().slice(0, 3), plan: org.plan, logo: org.name.slice(0, 1).toUpperCase() },
-    members,
-    projects,
-  };
 }
 
 export function adaptApiTimeline(events: ApiTimelineEvent[]): TimelineEvent[] {
