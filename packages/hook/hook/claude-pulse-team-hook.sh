@@ -332,6 +332,9 @@ fi
 # If we have either source, emit a combined hookSpecificOutput JSON. Team
 # context goes after OG's so the team block is the most-recent thing the
 # AI reads (most-recent context tends to weight higher).
+# Note: Claude Code's hook schema requires hookEventName inside
+# hookSpecificOutput — without it the runtime rejects the entire output
+# with "Hook JSON output validation failed".
 if [ -n "$OG_CTX" ] || [ -n "$TEAM_CTX" ]; then
     COMBINED="$OG_CTX"
     if [ -n "$TEAM_CTX" ]; then
@@ -341,11 +344,30 @@ if [ -n "$OG_CTX" ] || [ -n "$TEAM_CTX" ]; then
             COMBINED="$TEAM_CTX"
         fi
     fi
-    printf '%s' "$(jq -nc --arg ctx "$COMBINED" '{hookSpecificOutput: {additionalContext: $ctx}}' 2>/dev/null)"
+    printf '%s' "$(jq -nc \
+        --arg ctx "$COMBINED" \
+        --arg hen "$HOOK_TYPE" \
+        '{hookSpecificOutput: {hookEventName: $hen, additionalContext: $ctx}}' \
+        2>/dev/null)"
     exit 0
 fi
 
 # Otherwise, pass through whatever OG output verbatim (e.g. for non-JSON
 # fallbacks, or for non-SessionStart hooks where OG might still write).
-[ -n "$SOLO_OUT" ] && printf '%s' "$SOLO_OUT"
+# If OG emitted hookSpecificOutput without hookEventName, inject it so
+# Claude Code's stricter schema accepts the output.
+if [ -n "$SOLO_OUT" ]; then
+    HAS_HSO="$(printf '%s' "$SOLO_OUT" | jq -e 'has("hookSpecificOutput")' >/dev/null 2>&1 && echo y || echo n)"
+    if [ "$HAS_HSO" = "y" ]; then
+        HAS_HEN="$(printf '%s' "$SOLO_OUT" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null || true)"
+        if [ -z "$HAS_HEN" ]; then
+            FIXED="$(printf '%s' "$SOLO_OUT" | jq -c --arg hen "$HOOK_TYPE" '.hookSpecificOutput.hookEventName = $hen' 2>/dev/null || echo "")"
+            [ -n "$FIXED" ] && printf '%s' "$FIXED" || printf '%s' "$SOLO_OUT"
+        else
+            printf '%s' "$SOLO_OUT"
+        fi
+    else
+        printf '%s' "$SOLO_OUT"
+    fi
+fi
 exit 0
