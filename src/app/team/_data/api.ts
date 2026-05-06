@@ -103,6 +103,10 @@ export const api = {
       }>;
       hot_files: Array<{ path: string; edits: number }>;
     }>(`/v1/projects/${encodeURIComponent(id)}`),
+  projectActivity: (id: string, days = 91) =>
+    get<{ days: Array<{ date: string; count: number }> }>(
+      `/v1/projects/${encodeURIComponent(id)}/activity?days=${days}`,
+    ),
   members: () => get<{ members: ApiMember[] }>("/v1/members"),
   timeline: (
     opts: {

@@ -146,6 +146,45 @@ projects.get("/projects/:id", async (c) => {
   });
 });
 
+// GET /v1/projects/:id/activity?days=90 — daily session counts for the
+// project's heatmap. Mirrors the org-level fetchDailyActivity in reports.ts
+// but scoped to one project. Returns dates even when count = 0 so the
+// dashboard heatmap can render a continuous strip.
+projects.get("/projects/:id/activity", async (c) => {
+  const session = c.get("session");
+  const id = c.req.param("id");
+  const days = Math.min(Math.max(parseInt(c.req.query("days") ?? "91", 10) || 91, 7), 365);
+
+  const owns = await db.query.projects.findFirst({
+    where: (p, { and, eq }) => and(eq(p.id, id), eq(p.orgId, session.org_id)),
+    columns: { id: true },
+  });
+  if (!owns) return problem(c, 404, "not_found", "Project not found");
+
+  const rows = (await db.execute<{ d: string; n: string }>(sql`
+    WITH window_days AS (
+      SELECT generate_series(
+        (CURRENT_DATE - (${days - 1}::int) * INTERVAL '1 day')::date,
+        CURRENT_DATE,
+        INTERVAL '1 day'
+      )::date AS d
+    )
+    SELECT to_char(window_days.d, 'YYYY-MM-DD') AS d,
+           COUNT(s.id)::text AS n
+      FROM window_days
+      LEFT JOIN sessions s
+        ON s.org_id = ${session.org_id}
+       AND s.project_id = ${id}
+       AND DATE(s.started_at) = window_days.d
+     GROUP BY window_days.d
+     ORDER BY window_days.d ASC
+  `)) as unknown as Array<{ d: string; n: string }>;
+
+  return c.json({
+    days: rows.map((r) => ({ date: r.d, count: parseInt(r.n, 10) })),
+  });
+});
+
 function redactionLabel(_policyId: string | null): "standard" | "strict" {
   // Until we surface policy.mode in the read shape, default to standard.
   return "standard";

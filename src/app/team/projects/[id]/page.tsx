@@ -7,7 +7,7 @@ import { Avatar, Badge, Sparkline } from "../../_components/primitives";
 import { Heatmap } from "../../_components/heatmap";
 import { useShell } from "../../_components/shell";
 import { api } from "../../_data/api";
-import { lastNDaysActivity, memberById, projectById, type InsightTag } from "../../_data/sample";
+import { memberById, projectById, type InsightTag, type ActivityDay } from "../../_data/sample";
 
 const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactElement, string]> = {
   decision: ["accent", () => <I.decision />, "Decision"],
@@ -282,7 +282,40 @@ export default function ProjectOverviewPage({ params }: { params: Promise<{ id: 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function ActivitySection({ projectId, hue }: { projectId: string; hue: number }) {
-  const days = lastNDaysActivity("project", projectId);
+  const [days, setDays] = useState<ActivityDay[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .projectActivity(projectId, 91)
+      .then((r) => {
+        if (!cancelled) setDays(r.days);
+      })
+      .catch(() => {
+        if (!cancelled) setDays([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  if (days === null) {
+    return (
+      <section
+        style={{
+          gridColumn: "1 / span 4",
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: 16,
+          color: "var(--fg-faint)",
+          fontSize: 12,
+        }}
+      >
+        Loading activity…
+      </section>
+    );
+  }
+
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const past = days.filter((d) => d.date <= todayIso);
