@@ -3,7 +3,7 @@
 // file_activity are denormalized projections used by the dashboard. Without this
 // step, live events land only in event_log and the dashboard never sees them.
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { resolveOpenBlocker } from "./resolution.js";
 import { scoreInsight } from "./quality.js";
@@ -28,8 +28,22 @@ export async function deriveEvent(ev: DerivableEvent): Promise<void> {
     if (ev.eventKind.startsWith("insight.")) return await deriveInsight(ev);
   } catch (err) {
     // Derivation failure must not reject the event_log write — that's the source of truth.
-    // Log and move on; a backfill can rebuild from event_log later.
+    // Persist to dead_letter_events so the dashboard can surface what's failing;
+    // a backfill can rebuild from event_log later.
+    const message = err instanceof Error ? err.message : String(err);
     console.error("[derive] failed for", ev.eventKind, ev.id, err);
+    try {
+      await db.insert(schema.deadLetterEvents).values({
+        orgId: ev.orgId,
+        eventId: ev.id,
+        payload: { eventKind: ev.eventKind, sessionId: ev.sessionId, payload: ev.payload },
+        reason: `derive_failed:${ev.eventKind}`,
+        lastError: message.slice(0, 2000),
+      });
+    } catch (dlErr) {
+      // Last-resort: even the dead-letter write failed. Don't recurse.
+      console.error("[derive] dead-letter write failed for", ev.id, dlErr);
+    }
   }
 }
 
@@ -49,6 +63,26 @@ async function deriveSessionStart(ev: DerivableEvent) {
       cloudEnv: strOrNull(ev.clientMeta.cloud_env),
       hookVersion: strOrNull(ev.clientMeta.hook_version),
       parentSessionId,
+    })
+    .onConflictDoNothing({ target: schema.sessions.id });
+}
+
+// Insert a minimal "active" session row when a child event (tool/insight)
+// arrives before its session.start was derived. onConflictDoNothing means a
+// real session.start that lands later (or already landed) wins on the columns
+// it owns; this only backfills the row's existence so the FK holds.
+async function ensureSessionStub(ev: DerivableEvent) {
+  if (!ev.sessionId) return;
+  await db
+    .insert(schema.sessions)
+    .values({
+      id: ev.sessionId,
+      orgId: ev.orgId,
+      memberId: ev.memberId,
+      projectId: ev.projectId,
+      startedAt: ev.hookTs,
+      status: "active",
+      parentSessionId: parentSessionIdFromMeta(ev),
     })
     .onConflictDoNothing({ target: schema.sessions.id });
 }
@@ -79,6 +113,14 @@ async function deriveSessionEnd(ev: DerivableEvent) {
   // via parameter binding — pre-serialize and cast in SQL.
   const hookTsIso = ev.hookTs.toISOString();
 
+  // First-end-wins: orchestrator sessions (ruflo / Claude Agent SDK) absorb
+  // a session.end from every sub-agent Stop, all stamped with the orchestrator's
+  // own session_id. Without this guard, every later Stop overwrites ended_at,
+  // duration_seconds, summary, and tokens — inflating duration and replacing
+  // the orchestrator's own summary with whatever the last sub-agent emitted.
+  // Globally the system sees 405 session.end events vs 106 session.start; this
+  // collapses the no-op tail at the derive layer (event_log keeps all rows as
+  // canonical truth).
   await db
     .update(schema.sessions)
     .set({
@@ -98,7 +140,7 @@ async function deriveSessionEnd(ev: DerivableEvent) {
           }
         : {}),
     })
-    .where(eq(schema.sessions.id, ev.sessionId));
+    .where(and(eq(schema.sessions.id, ev.sessionId), isNull(schema.sessions.endedAt)));
 }
 
 const TOOL_KIND_TO_NAME: Record<string, string> = {
@@ -119,6 +161,13 @@ async function deriveToolEvent(ev: DerivableEvent) {
   if (!ev.sessionId) return; // tool_events.session_id is NOT NULL
   const toolName = TOOL_KIND_TO_NAME[ev.eventKind];
   if (!toolName) return;
+
+  // Self-heal: ensure the parent session exists. session.start can be lost
+  // (API down at session start, hook restart mid-session, out-of-order sync),
+  // and tool_events.session_id is a NOT NULL FK — without this the insert
+  // violates the constraint and the event is dead-lettered. A later
+  // session.start/session.end fills/updates the same row.
+  await ensureSessionStub(ev);
 
   const p = ev.payload;
   const filePath = strOrNull(p.file_path);
@@ -182,6 +231,11 @@ async function deriveInsight(ev: DerivableEvent) {
   const p = ev.payload;
   const content = strOrNull(p.content) ?? strOrNull(p.text) ?? "";
   if (!content) return;
+
+  // Self-heal the parent session (see deriveToolEvent). insights.session_id is
+  // a nullable FK (ON DELETE SET NULL), but a stub keeps the insight attached
+  // to its session for the dashboard's session tree rather than orphaning it.
+  if (ev.sessionId) await ensureSessionStub(ev);
 
   let title = strOrNull(p.title);
   if (!title) {
