@@ -1,0 +1,31 @@
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Build artifacts
+apps/*/dist/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+
+# Editor / tooling
+.claude/
+.mcp.json
+.playwright-mcp/
+.lazy/
+
+# Local Claude Code session memory directory
+memory/
+
+# Local data artefacts — never commit
+.backups/
+reports/
+*.docx
+*.pptx
+*.dump
+*.sql.gz

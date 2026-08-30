@@ -1,0 +1,197 @@
+/* ==========================================================================
+   Code Pulse — Design Tokens
+   Restrained neutral base + one credible accent. Light + dark.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Type */
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Spacing scale (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* Radii */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+
+  /* Density (overridden by [data-density]) */
+  --row-h: 36px;
+  --row-pad-y: 8px;
+  --row-pad-x: 14px;
+  --avatar-sm: 20px;
+
+  /* Motion */
+  --ease-std: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-med: 200ms;
+}
+
+[data-density="comfortable"] {
+  --row-h: 44px;
+  --row-pad-y: 12px;
+  --row-pad-x: 16px;
+  --avatar-sm: 24px;
+}
+
+/* ─────────────────────────── LIGHT THEME ─────────────────────────── */
+[data-theme="light"] {
+  /* Surfaces */
+  --bg: #ffffff;
+  --bg-subtle: #f8f8f7;
+  --bg-muted: #f3f2f0;
+  --bg-hover: #f6f5f3;
+  --bg-active: #efedea;
+
+  /* Sidebar - slightly warmer, lifted */
+  --sidebar-bg: #faf9f7;
+  --sidebar-border: #ebe9e5;
+
+  /* Borders */
+  --border: #e7e5e0;
+  --border-strong: #d6d3cc;
+  --border-focus: var(--accent);
+
+  /* Text */
+  --fg: #1a1917;
+  --fg-strong: #0a0a08;
+  --fg-muted: #57544c;
+  --fg-faint: #8a857a;
+  --fg-on-accent: #ffffff;
+
+  /* Status */
+  --status-ok-bg: #ecf6ec;
+  --status-ok-fg: #1f6b2c;
+  --status-ok-border: #c9e4cc;
+
+  --status-warn-bg: #fdf3df;
+  --status-warn-fg: #7a5912;
+  --status-warn-border: #ecdaa9;
+
+  --status-err-bg: #fbe9e7;
+  --status-err-fg: #8a2418;
+  --status-err-border: #f3c8c1;
+
+  --status-info-bg: #e8eef8;
+  --status-info-fg: #1d3f7a;
+  --status-info-border: #c8d4ea;
+
+  --status-neutral-bg: #efedea;
+  --status-neutral-fg: #4a4740;
+  --status-neutral-border: #d8d5cf;
+
+  --status-stale-bg: #f3eeea;
+  --status-stale-fg: #6b4f3a;
+  --status-stale-border: #ddd0c0;
+
+  /* Shadows */
+  --shadow-popover: 0 8px 24px -4px rgba(20, 18, 14, 0.12), 0 2px 6px -1px rgba(20, 18, 14, 0.08);
+  --shadow-modal: 0 24px 48px -12px rgba(20, 18, 14, 0.25), 0 4px 12px -2px rgba(20, 18, 14, 0.10);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  /* Default accent: deep blue */
+  --accent: #1d4ed8;
+  --accent-hover: #1e40af;
+  --accent-soft: #e8eefa;
+  --accent-soft-fg: #1d3f7a;
+}
+
+/* ─────────────────────────── DARK THEME ─────────────────────────── */
+[data-theme="dark"] {
+  --bg: #0e0e0c;
+  --bg-subtle: #131311;
+  --bg-muted: #181816;
+  --bg-hover: #1c1c1a;
+  --bg-active: #232220;
+
+  --sidebar-bg: #0a0a09;
+  --sidebar-border: #1f1e1c;
+
+  --border: #232220;
+  --border-strong: #34322e;
+  --border-focus: var(--accent);
+
+  --fg: #ebe9e3;
+  --fg-strong: #fbfaf6;
+  --fg-muted: #a09c93;
+  --fg-faint: #6e6a61;
+  --fg-on-accent: #ffffff;
+
+  --status-ok-bg: #14271a;
+  --status-ok-fg: #7cc28a;
+  --status-ok-border: #1f3a26;
+
+  --status-warn-bg: #2b220e;
+  --status-warn-fg: #d8b665;
+  --status-warn-border: #3e3416;
+
+  --status-err-bg: #2c1612;
+  --status-err-fg: #e89388;
+  --status-err-border: #45221c;
+
+  --status-info-bg: #11203b;
+  --status-info-fg: #8ab1ec;
+  --status-info-border: #1c3055;
+
+  --status-neutral-bg: #1f1e1c;
+  --status-neutral-fg: #a09c93;
+  --status-neutral-border: #2c2b28;
+
+  --status-stale-bg: #251e16;
+  --status-stale-fg: #c2a07e;
+  --status-stale-border: #38291c;
+
+  --shadow-popover: 0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 24px 48px -12px rgba(0, 0, 0, 0.6), 0 4px 12px -2px rgba(0, 0, 0, 0.45);
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  --accent: #5b8def;
+  --accent-hover: #7aa3f5;
+  --accent-soft: #1a2a4a;
+  --accent-soft-fg: #b9cdf2;
+}
+
+/* ─── Accent variants (data attribute on root) ─── */
+[data-theme="light"][data-accent="blue"]   { --accent: #1d4ed8; --accent-hover: #1e40af; --accent-soft: #e8eefa; --accent-soft-fg: #1d3f7a; }
+[data-theme="light"][data-accent="teal"]   { --accent: #0f766e; --accent-hover: #115e58; --accent-soft: #d8efed; --accent-soft-fg: #115e58; }
+[data-theme="light"][data-accent="slate"]  { --accent: #1e293b; --accent-hover: #0f172a; --accent-soft: #e7ebf2; --accent-soft-fg: #1e293b; }
+[data-theme="light"][data-accent="indigo"] { --accent: #4338ca; --accent-hover: #3730a3; --accent-soft: #ebeafa; --accent-soft-fg: #312e81; }
+
+[data-theme="dark"][data-accent="blue"]    { --accent: #5b8def; --accent-hover: #7aa3f5; --accent-soft: #1a2a4a; --accent-soft-fg: #b9cdf2; }
+[data-theme="dark"][data-accent="teal"]    { --accent: #4ec3b6; --accent-hover: #6ed3c7; --accent-soft: #103631; --accent-soft-fg: #b4e6df; }
+[data-theme="dark"][data-accent="slate"]   { --accent: #94a3b8; --accent-hover: #b3bfd1; --accent-soft: #25303d; --accent-soft-fg: #d3dbe6; }
+[data-theme="dark"][data-accent="indigo"]  { --accent: #818cf8; --accent-hover: #a5b0fb; --accent-soft: #25254a; --accent-soft-fg: #c7cbf7; }
+
+/* ─── Base reset for app surfaces ─── */
+.cp-app, .cp-app * {
+  box-sizing: border-box;
+}
+.cp-app {
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01', 'ss02';
+  color: var(--fg);
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+}
+.cp-app code, .cp-app pre, .cp-app .mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+}

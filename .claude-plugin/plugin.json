@@ -1,0 +1,8 @@
+{
+  "name": "code-pulse",
+  "description": "Code Pulse \u2014 turns Claude Code sessions into shared team knowledge. Data dir: ~/.code-pulse.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Clemens Hoenig"
+  }
+}

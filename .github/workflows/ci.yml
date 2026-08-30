@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cpt
+          POSTGRES_PASSWORD: cpt
+          POSTGRES_DB: cpt_ci
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cpt -d cpt_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://cpt:cpt@localhost:55432/cpt_ci
+      API_KEY_PEPPER: ci-pepper-0123456789abcdef0123456789abcdef
+      SESSION_SECRET: ci-secret-0123456789abcdef0123456789abcdef
+      HEALTH_DEEP_TOKEN: ci-canary-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install (root)
+        run: npm ci
+      - name: Install (api)
+        run: npm ci
+        working-directory: apps/api
+      - name: Install (hook)
+        run: npm ci
+        working-directory: packages/hook
+
+      - name: Typecheck root (dashboard + hook)
+        run: npx tsc --noEmit
+      - name: Typecheck api
+        run: npm run typecheck
+        working-directory: apps/api
+      - name: Hook builds clean
+        run: npm run build
+        working-directory: packages/hook
+      - name: Hook script syntax
+        run: bash -n packages/hook/hook/code-pulse-hook.sh
+
+      - name: Unit tests (api)
+        run: npm test
+        working-directory: apps/api
+
+      - name: Migrate from empty DB
+        run: npm run db:migrate
+        working-directory: apps/api
+      - name: Migrate is idempotent
+        run: npm run db:migrate && npm run db:migrate -- --status
+        working-directory: apps/api
+      - name: Bootstrap smoke
+        run: npm run bootstrap -- --org "CI Org" --email ci@example.com
+        working-directory: apps/api

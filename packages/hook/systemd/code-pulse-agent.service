@@ -1,0 +1,15 @@
+[Unit]
+Description=Code Pulse — outbox sync agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=__NODE__ __CLI_JS__ agent
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:%h/.code-pulse/agent.out.log
+StandardError=append:%h/.code-pulse/agent.err.log
+
+[Install]
+WantedBy=default.target

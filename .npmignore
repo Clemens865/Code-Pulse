@@ -1,0 +1,23 @@
+# Build artifacts
+.next/
+node_modules/
+*.tsbuildinfo
+
+# Dev/tooling
+.claude/
+.lazy/
+.playwright-mcp/
+.mcp.json
+
+# Screenshots and docs images
+*.png
+dashboard-*.png
+fixed-*.png
+
+# Environment
+.env
+.env.local
+.DS_Store
+
+# Lock files (users install their own)
+package-lock.json
