@@ -1,7 +1,6 @@
 {
   "name": "@code-pulse/hook",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "engines": {
     "node": ">=18.0.0"
@@ -22,5 +21,12 @@
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
-  }
+  },
+  "description": "Code Pulse workstation hook + sync CLI \u2014 captures Claude Code sessions into your team Pulse server",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Clemens865/Code-Pulse.git",
+    "directory": "packages/hook"
+  },
+  "license": "MIT"
 }
