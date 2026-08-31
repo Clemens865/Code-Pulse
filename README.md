@@ -15,6 +15,26 @@ what was decided — across every repo your team touches.
 > Not affiliated with or endorsed by Anthropic. "Claude" is a trademark of
 > Anthropic, PBC.
 
+## What it looks like
+
+*All screenshots show a seeded demo org with fictional data.*
+
+**Team overview** — sessions, decisions, open blockers, and line churn across every project, with an org-wide activity heatmap:
+
+![Team overview dashboard](docs/screenshots/overview.png)
+
+**Insights** — every decision, blocker, fix, and progress note captured from sessions, searchable and filterable:
+
+![Insights feed](docs/screenshots/insights.png)
+
+**Live timeline** — who is doing what right now, across all repos:
+
+![Activity timeline](docs/screenshots/timeline.png)
+
+**Projects** — auto-discovered from each session's repo, with activity sparklines and open-blocker counts:
+
+![Projects list](docs/screenshots/projects.png)
+
 ## How it works
 
 ```
