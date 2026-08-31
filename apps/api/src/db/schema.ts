@@ -319,6 +319,7 @@ export const insights = pgTable("insights", {
   content: text("content").notNull(),
   reasoning: text("reasoning"),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

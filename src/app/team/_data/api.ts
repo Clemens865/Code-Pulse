@@ -140,9 +140,14 @@ export const api = {
         member_id: string;
         project_id: string;
         created_at: string;
+        resolved_at: string | null;
       }>;
     }>(`/v1/insights${qs ? `?${qs}` : ""}`);
   },
+  resolveInsight: (id: string) =>
+    post<{ ok: boolean }>(`/v1/insights/${encodeURIComponent(id)}/resolve`, {}),
+  reopenInsight: (id: string) =>
+    post<{ ok: boolean }>(`/v1/insights/${encodeURIComponent(id)}/reopen`, {}),
   reportsWeekly: () => get<ApiWeeklyReport>("/v1/reports/weekly"),
   reportsOverview: (range: "24h" | "7d" | "30d" | "90d" = "7d") =>
     get<ApiOverviewReport>(`/v1/reports/overview?range=${range}`),
@@ -438,15 +443,18 @@ export function adaptApiInsights(
     member_id: string;
     project_id: string;
     created_at: string;
+    resolved_at?: string | null;
   }>,
 ): Insight[] {
   return apiInsights.map((i) => ({
+    id: i.id,
     type: i.type,
     project: i.project_id,
     member: i.member_id,
     t: relativeTime(i.created_at),
     title: i.title || i.content.slice(0, 80),
     text: i.content,
+    resolved: i.resolved_at != null,
   }));
 }
 

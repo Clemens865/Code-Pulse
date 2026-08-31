@@ -5,6 +5,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
+import { env } from "../env.js";
 import { scorePendingSessions } from "./stuck.js";
 import { backfillQualityScores } from "./quality.js";
 import { enforceRetention } from "./retention.js";
@@ -49,6 +50,29 @@ export async function reclaimCrashedSessions(): Promise<number> {
   return n;
 }
 
+/**
+ * Auto-resolve open blockers that nobody has re-asserted (or resolved) within
+ * BLOCKER_STALE_DAYS. Blockers stay open by being repeated — a blocker no
+ * session has mentioned in two weeks is not blocking anyone. Reversible via
+ * the dashboard's reopen action.
+ */
+export async function expireStaleBlockers(): Promise<number> {
+  const days = env.BLOCKER_STALE_DAYS;
+  if (days <= 0) return 0;
+  const r = await db.execute<{ id: string }>(sql`
+    UPDATE insights
+       SET resolved_at = NOW(),
+           reasoning = COALESCE(reasoning, 'auto-resolved: not re-asserted for ' || ${days} || ' days')
+     WHERE type = 'blocker'
+       AND resolved_at IS NULL
+       AND COALESCE(last_seen_at, created_at) < NOW() - make_interval(days => ${days})
+    RETURNING id
+  `);
+  const n = (r as unknown as Array<{ id: string }>).length ?? 0;
+  if (n > 0) console.log(`[jobs] expireStaleBlockers: auto-resolved ${n} stale blocker(s)`);
+  return n;
+}
+
 let _started = false;
 export function startBackgroundJobs(intervalMs: number = 30 * 60 * 1000): void {
   if (_started) return;
@@ -74,6 +98,11 @@ export function startBackgroundJobs(intervalMs: number = 30 * 60 * 1000): void {
       await enforceRetention();
     } catch (err) {
       console.error("[jobs] enforceRetention failed:", err);
+    }
+    try {
+      await expireStaleBlockers();
+    } catch (err) {
+      console.error("[jobs] expireStaleBlockers failed:", err);
     }
   };
 

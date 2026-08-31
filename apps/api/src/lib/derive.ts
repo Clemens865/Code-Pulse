@@ -5,7 +5,7 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
-import { resolveOpenBlocker } from "./resolution.js";
+import { reassertOpenBlocker, resolveOpenBlocker } from "./resolution.js";
 import { scoreInsight } from "./quality.js";
 
 export type DerivableEvent = {
@@ -278,6 +278,19 @@ async function deriveInsight(ev: DerivableEvent) {
   }
   const reasoning = strOrNull(p.reasoning) ?? strOrNull(p.why) ?? null;
 
+  // A blocker that trigram-matches an already-open blocker in this project is
+  // the same blocker re-asserted (the Stop prompt repeats standing blockers
+  // every turn) — bump its last_seen_at instead of stacking a duplicate.
+  if (type === "blocker") {
+    const re = await reassertOpenBlocker(ev.orgId, ev.projectId, content, ev.hookTs);
+    if (re) {
+      console.log(
+        `[derive] blocker re-asserted → ${re.blockerId} (similarity=${re.similarity.toFixed(2)}), skipping duplicate insert`,
+      );
+      return;
+    }
+  }
+
   const qualityScore = scoreInsight({ content, reasoning });
   await db
     .insert(schema.insights)
@@ -292,6 +305,7 @@ async function deriveInsight(ev: DerivableEvent) {
       content,
       reasoning,
       createdAt: ev.hookTs,
+      lastSeenAt: ev.hookTs,
     })
     .onConflictDoNothing({ target: schema.insights.id });
   // quality_score isn't in the Drizzle insights schema yet — write via raw SQL.

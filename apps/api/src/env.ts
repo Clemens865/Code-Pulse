@@ -16,6 +16,9 @@ const schema = z.object({
   // production only; self-hosters running NODE_ENV=production without OAuth set
   // LOCAL_LOGIN=true deliberately. "false" disables it everywhere.
   LOCAL_LOGIN: z.enum(["auto", "true", "false"]).default("auto"),
+  // Open blockers not re-asserted (or explicitly resolved) within this many
+  // days are auto-resolved as stale by the background job. 0 disables the sweep.
+  BLOCKER_STALE_DAYS: z.coerce.number().int().min(0).default(14),
   // Optional: enables pattern auto-suggest at Stop time (Sprint 8). When unset,
   // the suggestion endpoint returns empty — feature flag, not failure.
   ANTHROPIC_API_KEY: z.string().optional(),

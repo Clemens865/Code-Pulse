@@ -69,6 +69,23 @@ export default function InsightsPage() {
     };
   }, [source, query, projects, types]);
 
+  // Resolve / reopen a blocker in place (live mode only — sample rows have no id).
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const toggleResolved = async (id: string, resolved: boolean) => {
+    setBusyId(id);
+    try {
+      if (resolved) await api.reopenInsight(id);
+      else await api.resolveInsight(id);
+      setLiveInsights((prev) =>
+        prev ? prev.map((i) => (i.id === id ? { ...i, resolved: !resolved } : i)) : prev,
+      );
+    } catch {
+      // leave state as-is; the next refetch shows the truth
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // Member filter applies client-side (api.insights doesn't expose it yet).
   const allInsights = useMemo(() => {
     const base = liveInsights ?? shellInsights;
@@ -194,10 +211,15 @@ export default function InsightsPage() {
                 alignItems: "start",
               }}
             >
-              <Badge kind={tm[0]} icon={tm[1]()}>
-                {tm[2]}
-              </Badge>
-              <div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                <Badge kind={tm[0]} icon={tm[1]()}>
+                  {tm[2]}
+                </Badge>
+                {it.type === "blocker" && it.resolved && (
+                  <Badge kind="ok" icon={<I.progress />}>Resolved</Badge>
+                )}
+              </div>
+              <div style={it.resolved ? { opacity: 0.55 } : undefined}>
                 <div
                   style={{
                     fontSize: 13.5,
@@ -258,18 +280,41 @@ export default function InsightsPage() {
                   <span>{it.t} ago</span>
                 </div>
               </div>
-              <button
-                type="button"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--fg-faint)",
-                  cursor: "pointer",
-                  padding: 2,
-                }}
-              >
-                <I.more />
-              </button>
+              {it.type === "blocker" && it.id ? (
+                <button
+                  type="button"
+                  disabled={busyId === it.id}
+                  onClick={() => toggleResolved(it.id!, !!it.resolved)}
+                  title={it.resolved ? "Reopen this blocker" : "Mark this blocker resolved"}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: 12,
+                    fontFamily: "inherit",
+                    fontWeight: 500,
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    color: it.resolved ? "var(--fg-faint)" : "var(--accent)",
+                    cursor: busyId === it.id ? "wait" : "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {it.resolved ? "Reopen" : "Resolve"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--fg-faint)",
+                    cursor: "pointer",
+                    padding: 2,
+                  }}
+                >
+                  <I.more />
+                </button>
+              )}
             </div>
           );
         })}

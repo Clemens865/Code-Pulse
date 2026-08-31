@@ -77,6 +77,9 @@ export type Insight = {
   t: string;
   title: string;
   text: string;
+  // Present for live API insights only (sample data has neither).
+  id?: string;
+  resolved?: boolean;
 };
 
 export const personas: Record<"agency" | "startup" | "bigorg", Persona> = {

@@ -428,11 +428,15 @@ fi
 # On the SECOND Stop fire (stop_hook_active=true) the last assistant message IS
 # the PROGRESS/DECISION/BLOCKED/RESOLVED block. Parse it right here and emit
 # insight.* events — no dependency on the single-user tracker.db. When the solo
-# tool is installed, its mirror in section 5 already captured richer rows for
-# this session, so we skip to avoid double capture.
+# tool is installed, its mirror in section 5 already captured PROGRESS/DECISION/
+# BLOCKED rows for this session, so we skip those to avoid double capture — but
+# the solo parser predates RESOLVED and drops those lines, so RESOLVED is always
+# parsed here (it's the only path that closes blockers server-side).
 if { [ "$HOOK_TYPE" = "Stop" ] || [ "$HOOK_TYPE" = "StopFailure" ]; } \
-   && [ "$TEAM_DISABLED" != "1" ] && [ ! -f "$SOLO_DIR/tracker.db" ] \
+   && [ "$TEAM_DISABLED" != "1" ] \
    && [ -f "$TEAM_CONFIG" ] && [ -n "${SESSION_ID:-}" ]; then
+    SOLO_MIRRORED=0
+    [ -f "$SOLO_DIR/tracker.db" ] && SOLO_MIRRORED=1
     SHA="$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || echo false)"
     SMSG="$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null || true)"
     if [ "$SHA" = "true" ] && [ -n "$SMSG" ]; then
@@ -441,6 +445,8 @@ if { [ "$HOOK_TYPE" = "Stop" ] || [ "$HOOK_TYPE" = "StopFailure" ]; } \
             KIND_RAW="${LINE%%:*}"
             CONTENT="$(printf '%s' "${LINE#*:}" | sed 's/^ *//')"
             [ -z "$CONTENT" ] && continue
+            # Solo mirror already captured everything except RESOLVED.
+            [ "$SOLO_MIRRORED" = "1" ] && [ "$KIND_RAW" != "RESOLVED" ] && continue
             case "$KIND_RAW" in
                 PROGRESS) IKIND="insight.progress" ;;
                 DECISION) IKIND="insight.decision" ;;
