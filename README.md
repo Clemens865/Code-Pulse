@@ -54,6 +54,45 @@ Claude Code hooks ─▶ SQLite outbox ─▶ sync ─▶ API (Hono + Postgres)
 - **Dashboard** (`src/app/team`) — Next.js 16. Timeline, projects, sessions,
   insights search, reports, admin.
 
+## Deployment: solo or team
+
+"Self-hosted" means **your team** hosts the server half — not that everything
+runs on each laptop. There are two halves:
+
+- **Server (installed once):** API + Postgres + dashboard, on any machine every
+  developer can reach.
+- **Workstation (installed per developer):** just the hook + `code-pulse` CLI,
+  pointed at the server with `--api-url`.
+
+```
+              ┌─────────────────────────────────┐
+              │    shared server (always on)    │
+              │  API :8787 · Postgres · dash    │
+              └──────▲─────────────────▲────────┘
+                     │ sync + context  │
+          ┌──────────┴───┐        ┌────┴─────────┐
+          │ dev laptop A │        │ dev laptop B │
+          │  hook + CLI  │        │  hook + CLI  │
+          └──────────────┘        └──────────────┘
+```
+
+**Solo (one machine):** run both halves on your own laptop — the Quickstart
+below does exactly that, with the hook pointing at `localhost:8787`. Nothing
+leaves your computer.
+
+**Team (one server, N workstations):** install the server half once on a small
+VPS, an internal box, or managed cloud (`docs/team-saas/STACK.md` describes a
+Fly.io + Neon + Vercel topology). Each developer then only runs:
+
+```bash
+npm install -g @code-pulse/hook
+code-pulse init --api-url https://pulse.your-team.example --api-key <their key>
+```
+
+Admins invite teammates from **Admin → Members**; each person gets their own
+API key, and everyone's sessions land in the same shared database — which is
+what makes the cross-team context injection work.
+
 ## Privacy & consent
 
 The hook shows a one-time notice on first use and can be stopped at any time:
