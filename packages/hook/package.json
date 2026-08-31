@@ -6,7 +6,7 @@
     "node": ">=18.0.0"
   },
   "bin": {
-    "code-pulse": "./bin/code-pulse.mjs"
+    "code-pulse": "bin/code-pulse.mjs"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -22,7 +22,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
-  "description": "Code Pulse workstation hook + sync CLI \u2014 captures Claude Code sessions into your team Pulse server",
+  "description": "Code Pulse workstation hook + sync CLI — captures Claude Code sessions into your team Pulse server",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Clemens865/Code-Pulse.git",

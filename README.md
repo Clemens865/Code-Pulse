@@ -52,7 +52,7 @@ Supported: macOS and Linux. Windows: WSL only (untested natively).
 Built against Claude Code 2.x hooks (`SessionEnd` requires 2.x).
 
 ```bash
-git clone <this repo> && cd code-pulse
+git clone https://github.com/Clemens865/Code-Pulse.git && cd Code-Pulse
 
 # 1. API + database
 cd apps/api
@@ -69,7 +69,7 @@ npm run dev                           # API on :8787
 npm install && npm run dev            # :3142 — sign in with the identity you bootstrapped
 
 # 3. Each developer's workstation
-npm install -g ./packages/hook
+npm install -g @code-pulse/hook   # or from a checkout: npm install -g ./packages/hook
 code-pulse init --api-url http://<api-host>:8787 --api-key <their key>
 code-pulse doctor              # verify end-to-end
 ```
