@@ -10,6 +10,7 @@
   hook now emits `RESOLVED:` lines even when the solo tracker is installed
   (previously that path silently dropped them, so nothing ever resolved).
   One-shot cleanup for existing installs: `scripts/dedupe-open-blockers.ts`.
+  The hook fix ships as `@code-pulse/hook@0.1.1`.
 - Dashboard no longer crashes on insights of type `fix`, `pattern`, or `context`.
 
 ## 0.1.0 — unreleased
