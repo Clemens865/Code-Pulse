@@ -10,10 +10,13 @@ import { FilterDropdown, FilterRangeChip } from "../_components/filter-dropdown"
 import { adaptApiTimeline, api } from "../_data/api";
 import { memberById, projectById, type InsightTag, type TimelineEvent } from "../_data/sample";
 
-const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactElement, string]> = {
+const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok" | "info" | "neutral", () => React.ReactElement, string]> = {
   decision: ["accent", () => <I.decision />, "Decision"],
   blocker: ["err", () => <I.blocker />, "Blocker"],
   progress: ["ok", () => <I.progress />, "Progress"],
+  pattern: ["info", () => <I.insights />, "Pattern"],
+  fix: ["neutral", () => <I.insights />, "Fix"],
+  context: ["neutral", () => <I.insights />, "Context"],
 };
 
 type Range = "24h" | "7d" | "30d" | "90d";

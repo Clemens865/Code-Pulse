@@ -51,7 +51,7 @@ export type TimelineEventKind =
   | "commit"
   | "project.created";
 
-export type InsightTag = "decision" | "blocker" | "progress";
+export type InsightTag = "decision" | "blocker" | "progress" | "pattern" | "fix" | "context";
 
 export type TimelineEvent = {
   kind: TimelineEventKind;

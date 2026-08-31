@@ -9,10 +9,13 @@ import { useShell } from "../../_components/shell";
 import { api } from "../../_data/api";
 import { memberById, projectById, type InsightTag, type ActivityDay } from "../../_data/sample";
 
-const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok", () => React.ReactElement, string]> = {
+const TAG_MAP: Record<InsightTag, ["accent" | "err" | "ok" | "info" | "neutral", () => React.ReactElement, string]> = {
   decision: ["accent", () => <I.decision />, "Decision"],
   blocker: ["err", () => <I.blocker />, "Blocker"],
   progress: ["ok", () => <I.progress />, "Progress"],
+  pattern: ["info", () => <I.insights />, "Pattern"],
+  fix: ["neutral", () => <I.insights />, "Fix"],
+  context: ["neutral", () => <I.insights />, "Context"],
 };
 
 type DetailResp = Awaited<ReturnType<typeof api.project>>;
@@ -171,7 +174,7 @@ export default function ProjectOverviewPage({ params }: { params: Promise<{ id: 
           ) : (
             projInsights.map((it, idx) => {
               const m = memberById(persona, it.member);
-              const tm = TAG_MAP[it.type];
+              const tm = TAG_MAP[it.type] ?? TAG_MAP.context;
               return (
                 <div
                   key={idx}
